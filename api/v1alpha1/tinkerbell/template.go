@@ -19,6 +19,15 @@ const (
 type TemplateSpec struct {
 	// +optional
 	Data *string `json:"data,omitempty"`
+
+	// RequiresCheckIn indicates that Data references data only known at the target
+	// Agent's check-in time (for example, live-reported hardware attributes via
+	// the "tinkerbell.org/agent-attributes" Hardware annotation) and so must not be
+	// rendered until then. A Workflow using this Template is left in
+	// WorkflowStateAwaitingCheckIn until the target Agent's first check-in, instead of
+	// rendering immediately at Workflow creation.
+	// +optional
+	RequiresCheckIn *bool `json:"requiresCheckIn,omitempty"`
 }
 
 // TemplateStatus defines the observed state of Template.

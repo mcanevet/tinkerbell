@@ -11,6 +11,7 @@ import (
 	grpcprometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/tinkerbell/tinkerbell/pkg/proto"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	grpcinternal "github.com/tinkerbell/tinkerbell/tink/server/internal/grpc"
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
@@ -37,6 +38,12 @@ type Config struct {
 	Logger       logr.Logger
 	Auto         AutoCapabilities
 	TLS          TLS
+
+	// DynamicClient and ReferenceRules let renderOnCheckIn resolve Hardware.Spec.References
+	// the same way the workflow controller does. DynamicClient may be left nil, in which
+	// case References are simply left unresolved.
+	DynamicClient  render.DynamicReader
+	ReferenceRules render.ReferenceRules
 }
 
 type AutoCapabilities struct {
@@ -117,9 +124,11 @@ func NewConfig(opts ...Option) *Config {
 
 func (c *Config) Start(ctx context.Context, log logr.Logger) error {
 	s := &grpcinternal.Handler{
-		Backend: c.Backend,
-		Logger:  log,
-		NowFunc: time.Now,
+		Backend:        c.Backend,
+		Logger:         log,
+		NowFunc:        time.Now,
+		DynamicClient:  c.DynamicClient,
+		ReferenceRules: c.ReferenceRules,
 		AutoCapabilities: grpcinternal.AutoCapabilities{
 			Enrollment: grpcinternal.AutoEnrollment{
 				Enabled:               c.Auto.Enrollment.Enabled,

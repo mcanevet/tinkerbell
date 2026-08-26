@@ -8,6 +8,7 @@ import (
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/tinkerbell"
 	"github.com/tinkerbell/tinkerbell/tink/controller/internal/workflow"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -23,6 +24,15 @@ var schemeBuilder = runtime.NewSchemeBuilder(
 	tinkerbell.AddToScheme,
 	bmc.AddToScheme,
 )
+
+// DefaultReferenceDenylist is the deny-list policy effective when ReferenceDenyListRules
+// is unset (its zero value): deny every Hardware.Spec.References entry - see this
+// package's own Start, which only overrides the workflow Reconciler's default (also
+// render.DefaultDenylist) when ReferenceDenyListRules is non-empty. Exposed here (rather
+// than callers reaching for render.DefaultDenylist directly) so cmd/tinkerbell, which
+// can't import the internal render package, can mirror the same "empty means deny-all"
+// policy for tink-server's check-in-time render.
+var DefaultReferenceDenylist = render.DefaultDenylist
 
 type Config struct {
 	Namespace               string

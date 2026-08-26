@@ -504,16 +504,23 @@ func compareErrors(t *testing.T, got, want error) {
 
 type mockBackendReadWriter struct {
 	workflow    *tinkerbell.Workflow
+	workflows   []tinkerbell.Workflow // when set, ListWorkflows returns this instead of []{*workflow}
 	writeErr    error
 	hardware    *tinkerbell.Hardware
 	hardwareErr error
+	template    *tinkerbell.Template
+	templates   map[string]*tinkerbell.Template // when set, ReadTemplate looks up by name instead of returning *template
+	templateErr error
 
 	updatedHardware *tinkerbell.Hardware // captures the hardware passed to UpdateHardware
 	updateOpts      data.UpdateOptions   // captures the options passed to UpdateHardware
 
+	updatedWorkflow *tinkerbell.Workflow // captures the last workflow passed to UpdateWorkflow
+
 	appliedInBand *tinkerbell.Attributes // captures the attrs passed to ApplyHardwareInBandAttributes
 
-	readHardwareCalls int // counts calls to ReadHardware, to catch redundant re-reads
+	readHardwareCalls   int // counts calls to ReadHardware, to catch redundant re-reads
+	updateHardwareCalls int // counts calls to UpdateHardware, to catch redundant re-writes
 }
 
 func (m *mockBackendReadWriter) ReadWorkflow(_ context.Context, _ string, _ string) (*tinkerbell.Workflow, error) {
@@ -524,13 +531,17 @@ func (m *mockBackendReadWriter) ReadWorkflow(_ context.Context, _ string, _ stri
 }
 
 func (m *mockBackendReadWriter) ListWorkflows(_ context.Context, _ data.WorkflowFilter) ([]tinkerbell.Workflow, error) {
+	if m.workflows != nil {
+		return m.workflows, nil
+	}
 	if m.workflow != nil {
 		return []tinkerbell.Workflow{*m.workflow}, nil
 	}
 	return []tinkerbell.Workflow{}, nil
 }
 
-func (m *mockBackendReadWriter) UpdateWorkflow(_ context.Context, _ *tinkerbell.Workflow, _ data.UpdateOptions) error {
+func (m *mockBackendReadWriter) UpdateWorkflow(_ context.Context, wf *tinkerbell.Workflow, _ data.UpdateOptions) error {
+	m.updatedWorkflow = wf
 	return m.writeErr
 }
 
@@ -556,6 +567,7 @@ func (m *mockBackendReadWriter) FilterHardware(_ context.Context, _ data.Hardwar
 }
 
 func (m *mockBackendReadWriter) UpdateHardware(_ context.Context, hw *tinkerbell.Hardware, opts data.UpdateOptions) error {
+	m.updateHardwareCalls++
 	m.updatedHardware = hw
 	m.updateOpts = opts
 	return nil
@@ -564,6 +576,21 @@ func (m *mockBackendReadWriter) UpdateHardware(_ context.Context, hw *tinkerbell
 func (m *mockBackendReadWriter) ApplyHardwareInBandAttributes(_ context.Context, _, _ string, attrs *tinkerbell.Attributes) error {
 	m.appliedInBand = attrs
 	return nil
+}
+
+func (m *mockBackendReadWriter) ReadTemplate(_ context.Context, name string, _ string) (*tinkerbell.Template, error) {
+	if m.templates != nil {
+		if tpl, ok := m.templates[name]; ok {
+			return tpl, nil
+		}
+	}
+	if m.template != nil {
+		return m.template, nil
+	}
+	if m.templateErr != nil {
+		return nil, m.templateErr
+	}
+	return nil, errors.New("template not found")
 }
 
 func TestGetActionHardwareAttributes(t *testing.T) {
@@ -640,7 +667,7 @@ func TestGetActionHardwareAttributes(t *testing.T) {
 			},
 			wantNoHWUpdate: true,
 		},
-		"first action with HardwareRef and existing annotation still applies inBand": {
+		"first action with HardwareRef and existing annotation is write-once but still applies inBand": {
 			workflow: baseWorkflow("my-hw"),
 			hardware: &tinkerbell.Hardware{
 				ObjectMeta: metav1.ObjectMeta{
@@ -656,8 +683,11 @@ func TestGetActionHardwareAttributes(t *testing.T) {
 				AgentId:         toPtr("machine-mac-1"),
 				AgentAttributes: &proto.AgentAttributes{Cpu: &proto.CPU{TotalCores: toPtr(uint32(4))}},
 			},
-			// The legacy annotation is write-once and stays untouched, but inBand is
-			// not gated on it: it must still be (re-)applied on every matching report.
+			// The legacy annotation is write-once here (unlike renderOnCheckIn's own
+			// always-overwrite refresh, which needs live values for a Template that
+			// depends on them) - an existing value is left alone even though this
+			// check-in reports different attributes. inBand is applied independently of
+			// it either way (that path is always-overwrite).
 			wantNoHWUpdate:        true,
 			wantInBand:            true,
 			wantReadHardwareCalls: toPtr(1),

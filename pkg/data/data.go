@@ -28,6 +28,14 @@ type UpdateOptions struct {
 	// The concrete type must be compatible with the backend (e.g. client.Object for the kube backend).
 	PatchFrom any
 
+	// OptimisticLock, when true alongside PatchFrom, adds a resourceVersion precondition
+	// to the generated patch (the kube backend's client.MergeFromWithOptimisticLock), so
+	// the Update call fails with a conflict rather than silently overwriting if the object
+	// changed since PatchFrom's snapshot was taken. Use for read-modify-write sequences
+	// where two callers racing to persist the same first-time transition (and each
+	// winning silently) would be a real correctness problem, not just a wasted write.
+	OptimisticLock bool
+
 	// RawPatch, when non-nil, signals that the backend should apply a raw patch.
 	RawPatch []byte
 

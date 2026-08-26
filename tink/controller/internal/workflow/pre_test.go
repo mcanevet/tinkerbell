@@ -288,14 +288,35 @@ func TestPrepareWorkflow(t *testing.T) {
 		wantWorkflow *v1alpha1.Workflow
 		job          *bmc.Job
 	}{
-		"nothing to do": {
+		"nothing to do, still awaiting deferred render": {
 			wantResult:   reconcile.Result{},
 			hardware:     &v1alpha1.Hardware{},
 			wantHardware: &v1alpha1.Hardware{},
-			workflow:     &v1alpha1.Workflow{},
+			workflow: &v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{
+					TemplateRendering: v1alpha1.TemplateRenderingDeferred,
+				},
+			},
 			wantWorkflow: &v1alpha1.Workflow{
 				Status: v1alpha1.WorkflowStatus{
-					State: v1alpha1.WorkflowStatePending,
+					State:             v1alpha1.WorkflowStateAwaitingCheckIn,
+					TemplateRendering: v1alpha1.TemplateRenderingDeferred,
+				},
+			},
+		},
+		"nothing to do, already rendered immediately": {
+			wantResult:   reconcile.Result{},
+			hardware:     &v1alpha1.Hardware{},
+			wantHardware: &v1alpha1.Hardware{},
+			workflow: &v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{
+					TemplateRendering: v1alpha1.TemplateRenderingSuccessful,
+				},
+			},
+			wantWorkflow: &v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{
+					State:             v1alpha1.WorkflowStatePending,
+					TemplateRendering: v1alpha1.TemplateRenderingSuccessful,
 				},
 			},
 		},
@@ -342,10 +363,81 @@ func TestPrepareWorkflow(t *testing.T) {
 						ToggleAllowNetboot: true,
 					},
 				},
+				Status: v1alpha1.WorkflowStatus{
+					TemplateRendering: v1alpha1.TemplateRenderingDeferred,
+				},
 			},
 			wantWorkflow: &v1alpha1.Workflow{
 				Status: v1alpha1.WorkflowStatus{
-					State: v1alpha1.WorkflowStatePending,
+					State:             v1alpha1.WorkflowStateAwaitingCheckIn,
+					TemplateRendering: v1alpha1.TemplateRenderingDeferred,
+					BootOptions: v1alpha1.BootOptionsStatus{
+						AllowNetboot: v1alpha1.AllowNetbootStatus{
+							ToggledTrue: true,
+						},
+					},
+					Conditions: []v1alpha1.WorkflowCondition{
+						{
+							Type:    v1alpha1.ToggleAllowNetbootTrue,
+							Status:  metav1.ConditionTrue,
+							Reason:  reasonComplete,
+							Message: "set allowPXE to true",
+						},
+					},
+				},
+			},
+		},
+		"toggle allowPXE, already rendered immediately": {
+			wantResult: reconcile.Result{},
+			hardware: &v1alpha1.Hardware{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-hardware",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.HardwareSpec{
+					Interfaces: []v1alpha1.Interface{
+						{
+							Netboot: &v1alpha1.Netboot{
+								AllowPXE: valueToPointer(false),
+							},
+						},
+					},
+				},
+			},
+			wantHardware: &v1alpha1.Hardware{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-hardware",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.HardwareSpec{
+					Interfaces: []v1alpha1.Interface{
+						{
+							Netboot: &v1alpha1.Netboot{
+								AllowPXE: valueToPointer(true),
+							},
+						},
+					},
+				},
+			},
+			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-workflow",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareRef: "test-hardware",
+					BootOptions: v1alpha1.BootOptions{
+						ToggleAllowNetboot: true,
+					},
+				},
+				Status: v1alpha1.WorkflowStatus{
+					TemplateRendering: v1alpha1.TemplateRenderingSuccessful,
+				},
+			},
+			wantWorkflow: &v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{
+					State:             v1alpha1.WorkflowStatePending,
+					TemplateRendering: v1alpha1.TemplateRenderingSuccessful,
 					BootOptions: v1alpha1.BootOptionsStatus{
 						AllowNetboot: v1alpha1.AllowNetbootStatus{
 							ToggledTrue: true,

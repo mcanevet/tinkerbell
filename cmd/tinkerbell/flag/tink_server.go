@@ -17,8 +17,10 @@ type TinkServerConfig struct {
 }
 
 var KubeIndexesTinkServer = map[kube.IndexType]kube.Index{
-	kube.IndexTypeWorkflowAgentID: kube.Indexes[kube.IndexTypeWorkflowAgentID],
-	kube.IndexTypeHardwareAgentID: kube.Indexes[kube.IndexTypeHardwareAgentID],
+	kube.IndexTypeWorkflowAgentID:     kube.Indexes[kube.IndexTypeWorkflowAgentID],
+	kube.IndexTypeWorkflowHardwareMap: kube.Indexes[kube.IndexTypeWorkflowHardwareMap],
+	kube.IndexTypeWorkflowHardwareRef: kube.Indexes[kube.IndexTypeWorkflowHardwareRef],
+	kube.IndexTypeHardwareAgentID:     kube.Indexes[kube.IndexTypeHardwareAgentID],
 }
 
 func RegisterTinkServerFlags(fs *Set, t *TinkServerConfig) {

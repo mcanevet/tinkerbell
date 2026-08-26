@@ -44,6 +44,18 @@ func Execute(ctx context.Context, cancel context.CancelFunc, args []string) erro
 	return executeWithOutput(ctx, cancel, args, os.Stdout)
 }
 
+// effectiveReferenceDenylist mirrors controller.go's own "empty flag means deny-all"
+// fallback: rawDenylist (the --tink-controller-reference-deny-list-rules flag value)
+// defaults to empty, which must not be read as "deny nothing". Used so tink-server's
+// check-in-time render applies the same reference deny-list policy as the workflow
+// controller's create-time render.
+func effectiveReferenceDenylist(rawDenylist []string) []string {
+	if len(rawDenylist) > 0 {
+		return rawDenylist
+	}
+	return controller.DefaultReferenceDenylist
+}
+
 // executeWithOutput allows command output to be captured in tests.
 func executeWithOutput(ctx context.Context, cancel context.CancelFunc, args []string, stdout io.Writer) error { //nolint:cyclop // Will need to look into reducing the cyclomatic complexity.
 	startTime := time.Now() // used in the HTTP healthcheck handler to report uptime.
@@ -347,8 +359,15 @@ func executeWithOutput(ctx context.Context, cancel context.CancelFunc, args []st
 		s.Config.Backend = b
 		h.Config.SetBackendFromFilterer(b)
 		ts.Config.SetBackends(b)
+		ts.Config.DynamicClient = b
 		tc.Config.Client = b.ClientConfig
 		tc.Config.DynamicClient = b
+		// Same reference allow/deny-list policy as the workflow controller (tc), so
+		// rendering a Workflow's Template on Agent check-in (tink-server) resolves
+		// Hardware.Spec.References identically to rendering at Workflow creation time
+		// (the workflow controller, for the deprecated STATE_PENDING reprocessing path).
+		ts.Config.ReferenceRules.Allowlist = tc.Config.ReferenceAllowListRules
+		ts.Config.ReferenceRules.Denylist = effectiveReferenceDenylist(tc.Config.ReferenceDenyListRules)
 		rc.Config.Client = b.ClientConfig
 		ssc.Config.Backend = b
 		if uic.Config.EnableAutoLogin {

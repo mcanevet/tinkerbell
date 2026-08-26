@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/tinkerbell/tinkerbell/pkg/build"
+	"github.com/tinkerbell/tinkerbell/tink/controller"
 )
 
 func TestExecuteVersion(t *testing.T) {
@@ -66,6 +67,40 @@ func TestNormalizeURLPrefix(t *testing.T) {
 			got := normalizeURLPrefix(tt.input)
 			if got != tt.want {
 				t.Errorf("normalizeURLPrefix(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectiveReferenceDenylist(t *testing.T) {
+	tests := map[string]struct {
+		rawDenylist []string
+		want        []string
+	}{
+		"unset flag falls back to deny-all": {
+			rawDenylist: nil,
+			want:        controller.DefaultReferenceDenylist,
+		},
+		"empty flag falls back to deny-all": {
+			rawDenylist: []string{},
+			want:        controller.DefaultReferenceDenylist,
+		},
+		"explicit rule overrides the default": {
+			rawDenylist: []string{`{"reference":{"name":[{"wildcard":"secret-*"}]}}`},
+			want:        []string{`{"reference":{"name":[{"wildcard":"secret-*"}]}}`},
+		},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := effectiveReferenceDenylist(tc.rawDenylist)
+			if len(got) != len(tc.want) {
+				t.Fatalf("effectiveReferenceDenylist(%v) = %v, want %v", tc.rawDenylist, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("effectiveReferenceDenylist(%v) = %v, want %v", tc.rawDenylist, got, tc.want)
+				}
 			}
 		})
 	}

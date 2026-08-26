@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -11,10 +10,10 @@ import (
 	"github.com/go-logr/logr"
 	v1alpha1 "github.com/tinkerbell/tinkerbell/api/v1alpha1/tinkerbell"
 	"github.com/tinkerbell/tinkerbell/pkg/journal"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	"k8s.io/apimachinery/pkg/api/equality"
 	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -22,40 +21,16 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
-const (
-	// templateDataReferences is the key used to access the Hardware references in the template data.
-	// This is lowercase as it is new and follows the all lowercase convention used when referencing
-	// fields in the reference object.
-	templateDataReferences = "references"
-	// templateDataHardware is the key used to access the Hardware data in the template data.
-	templateDataHardware = "hardware"
-	// templateDataHardwareLegacy is the key used to access the Hardware data in the template data.
-	// This is Title cased as it was the original convention used in the template data and is
-	// used for backwards compatibility.
-	//
-	// Deprecated: use templateDataHardware instead. This key will be removed in a future release.
-	templateDataHardwareLegacy = "Hardware"
-
-	// reasonError is the condition Reason set when a workflow step fails.
-	reasonError = "Error"
-)
-
-type dynamicClient interface {
-	DynamicRead(ctx context.Context, gvr schema.GroupVersionResource, name, namespace string) (map[string]interface{}, error)
-}
+// reasonError is the condition Reason set when a workflow step fails.
+const reasonError = "Error"
 
 // Reconciler is a type for managing Workflows.
 type Reconciler struct {
 	client         ctrlclient.Client
 	nowFunc        func() time.Time
 	backoff        *backoff.ExponentialBackOff
-	dynamicClient  dynamicClient
-	referenceRules ReferenceRules
-}
-
-type ReferenceRules struct {
-	Allowlist []string
-	Denylist  []string
+	dynamicClient  render.DynamicReader
+	referenceRules render.ReferenceRules
 }
 
 type Option func(*Reconciler)
@@ -76,7 +51,7 @@ func WithDenyReferenceRules(denylist []string) Option {
 
 // TODO(jacobweinstock): add functional arguments to the signature.
 // TODO(jacobweinstock): write functional argument for customizing the backoff.
-func NewReconciler(client ctrlclient.Client, dc dynamicClient, opts ...Option) *Reconciler {
+func NewReconciler(client ctrlclient.Client, dc render.DynamicReader, opts ...Option) *Reconciler {
 	bo := backoff.NewExponentialBackOff()
 	bo.MaxInterval = 5 * time.Second // this should keep all NextBackOff's under 10 seconds
 	d := &Reconciler{
@@ -84,9 +59,9 @@ func NewReconciler(client ctrlclient.Client, dc dynamicClient, opts ...Option) *
 		nowFunc:       time.Now,
 		backoff:       bo,
 		dynamicClient: dc,
-		referenceRules: ReferenceRules{
+		referenceRules: render.ReferenceRules{
 			Allowlist: []string{},
-			Denylist:  []string{`{"reference": {"name": [{"wildcard": "*"}]}}`}, // deny all by default.
+			Denylist:  render.DefaultDenylist,
 		},
 	}
 
@@ -146,16 +121,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	switch wflow.Status.State {
 	case "":
 		journal.Log(ctx, "new workflow")
-		resp, err := r.processNewWorkflow(ctx, logger, wflow)
-		// If the Workflow spec is disabled, just set the AgentID and return.
-		// The Agent ID is used as an index in the Tink Server backend, so it needs to be set even when the Workflow is disabled.
+		// A disabled Workflow is left at this zero-value State forever - it never calls
+		// processNewWorkflow, so it never transitions to Preparing/AwaitingCheckIn and
+		// never renders. It's still discoverable by Agent ID via
+		// kube.WorkflowHardwareMapAgentIDs (spec.hardwareMap), which indexes this State
+		// the same way it does Preparing/AwaitingCheckIn - status.agentID is never an
+		// option here since rendering (the only thing that ever sets it) never runs.
 		if wflow.Spec.Disabled != nil && *wflow.Spec.Disabled {
 			journal.Log(ctx, "workflow disabled")
-			wflow2 := stored.DeepCopy()
-			wflow2.Status.AgentID = wflow.Status.AgentID
-			return reconcile.Result{}, mergePatchStatus(ctx, r.client, stored, wflow2)
+			return reconcile.Result{}, nil
 		}
 
+		resp, err := r.processNewWorkflow(ctx, logger, wflow)
 		return resp, errors.Join(err, mergePatchStatus(ctx, r.client, stored, wflow))
 	case v1alpha1.WorkflowStatePreparing:
 		journal.Log(ctx, "preparing workflow")
@@ -210,14 +187,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		rc, err := s.postActions(ctx)
 
 		return rc, errors.Join(err, mergePatchStatus(ctx, r.client, stored, wflow))
-	case v1alpha1.WorkflowStatePending, v1alpha1.WorkflowStateTimeout, v1alpha1.WorkflowStateFailed, v1alpha1.WorkflowStateSuccess:
+	case v1alpha1.WorkflowStatePending, v1alpha1.WorkflowStateTimeout, v1alpha1.WorkflowStateFailed, v1alpha1.WorkflowStateSuccess, v1alpha1.WorkflowStateAwaitingCheckIn:
 		journal.Log(ctx, "controller will not trigger another reconcile", "state", wflow.Status.State)
 
 		return reconcile.Result{}, nil
 	case v1alpha1.WorkflowState("STATE_PENDING"):
 		journal.Log(ctx, "workflow using a deprecated pending state, reprocessing", "state", wflow.Status.State)
 
-		return reconcile.Result{}, errors.Join(r.processWorkflow(ctx, logger, wflow), mergePatchStatus(ctx, r.client, stored, wflow))
+		return reconcile.Result{}, errors.Join(r.processWorkflow(ctx, logger, wflow, nil), mergePatchStatus(ctx, r.client, stored, wflow))
 	default:
 		journal.Log(ctx, "controller will not trigger reconcile, unknown state", "state", wflow.Status.State)
 	}
@@ -237,37 +214,50 @@ func mergePatchStatus(ctx context.Context, cc ctrlclient.Client, original, updat
 	return nil
 }
 
-func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) error {
+// readTemplate fetches the Template referenced by stored.Spec.TemplateRef, persisting a
+// Failed status and a TemplateRenderedSuccess=False condition on stored if it can't be
+// read - shared by processNewWorkflow (deciding whether rendering should defer) and
+// processWorkflow (actually rendering), so a Template read failure looks the same
+// whichever of the two triggers it.
+func (r *Reconciler) readTemplate(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) (*v1alpha1.Template, error) {
 	tpl := &v1alpha1.Template{}
 	if err := r.client.Get(ctx, ctrlclient.ObjectKey{Name: stored.Spec.TemplateRef, Namespace: stored.Namespace}, tpl); err != nil {
+		msg := err.Error()
+		retErr := err
 		if kerrors.IsNotFound(err) {
-			// Throw an error to raise awareness and take advantage of immediate requeue.
-			logger.Error(err, "error getting Template object in processNewWorkflow function")
+			logger.Error(err, "error getting Template object")
 			journal.Log(ctx, "template not found")
-			stored.Status.TemplateRendering = v1alpha1.TemplateRenderingFailed
-			stored.Status.SetConditionIfDifferent(v1alpha1.WorkflowCondition{
-				Type:    v1alpha1.TemplateRenderedSuccess,
-				Status:  metav1.ConditionFalse,
-				Reason:  reasonError,
-				Message: "template not found",
-				Time:    &metav1.Time{Time: metav1.Now().UTC()},
-			})
-
-			return fmt.Errorf(
-				"no template found: name=%v; namespace=%v",
-				stored.Spec.TemplateRef,
-				stored.Namespace,
-			)
+			msg = "template not found"
+			retErr = fmt.Errorf("no template found: name=%v; namespace=%v", stored.Spec.TemplateRef, stored.Namespace)
+		} else {
+			logger.Error(err, "error reading Template object")
+			journal.Log(ctx, "error reading template", "error", err)
 		}
 		stored.Status.TemplateRendering = v1alpha1.TemplateRenderingFailed
 		stored.Status.SetConditionIfDifferent(v1alpha1.WorkflowCondition{
 			Type:    v1alpha1.TemplateRenderedSuccess,
 			Status:  metav1.ConditionFalse,
 			Reason:  reasonError,
-			Message: err.Error(),
+			Message: msg,
 			Time:    &metav1.Time{Time: metav1.Now().UTC()},
 		})
-		return err
+		return nil, retErr
+	}
+	return tpl, nil
+}
+
+// processWorkflow renders stored's Template immediately (the pre-render-on-checkin
+// behavior). tpl, when non-nil, is a Template the caller has already fetched (processNewWorkflow
+// fetches one anyway to decide whether to defer rendering at all, so passing it here avoids
+// re-fetching it a second time); when nil, it's fetched from stored.Spec.TemplateRef (used
+// by the deprecated STATE_PENDING reprocessing path, which has no Template on hand yet).
+func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow, tpl *v1alpha1.Template) error {
+	if tpl == nil {
+		var err error
+		tpl, err = r.readTemplate(ctx, logger, stored)
+		if err != nil {
+			return err
+		}
 	}
 
 	var hardware v1alpha1.Hardware
@@ -304,62 +294,12 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 		)
 	}
 
-	data := make(map[string]interface{})
-	for key, val := range stored.Spec.HardwareMap {
-		data[key] = val
+	references, refErr := render.ResolveReferences(ctx, r.dynamicClient, r.referenceRules, hardware)
+	if refErr != nil {
+		logger.V(1).Info("error resolving one or more references", "error", refErr)
 	}
-	contract := toTemplateHardwareData(hardware)
-	data[templateDataHardware] = func() interface{} {
-		// structToMap is used so that fields are accessible in Templates by their json struct tag names instead of
-		// their Go struct field names and their case.
-		// for example, {{ hardware.spec.metadata.instance.id }} instead of {{ hardware.Spec.Metadata.Instance.ID }}.
-		v, err := structToMap(hardware)
-		if err != nil {
-			logger.V(1).Info("error converting hardware to map for use in template data", "error", err)
-			return map[string]interface{}{}
-		}
-		return v
-	}()
-	data[templateDataHardwareLegacy] = contract
-	references := make(map[string]interface{})
-	var refErr error
-	for refName, rf := range hardware.Spec.References {
-		ed := evaluationData{
-			Source: source{
-				Name:      hardware.Name,
-				Namespace: hardware.Namespace,
-			},
-			Reference: rf,
-		}
-		denied, drules, err := evaluate(ctx, r.referenceRules.Denylist, ed)
-		if err != nil {
-			refErr = errors.Join(refErr, err)
-			logger.V(1).Info("error applying denylist rules", "error", err, "denyRules", r.referenceRules.Denylist)
-			continue
-		}
-		allowed, arules, err := evaluate(ctx, r.referenceRules.Allowlist, ed)
-		if err != nil {
-			refErr = errors.Join(refErr, err)
-			logger.V(1).Info("error applying allowlist rules", "error", err, "allowRules", r.referenceRules.Allowlist)
-			continue
-		}
-		if denied && !allowed {
-			refErr = errors.Join(refErr, errors.New("reference denied"))
-			logger.V(1).Info("reference denied", "referenceName", refName, "denyRules", drules, "allowRules", arules)
-			continue
-		}
-		logger.V(1).Info("reference allowed", "referenceName", refName, "denyRules", drules, "allowRules", arules)
-		gvr := schema.GroupVersionResource{Group: rf.Group, Version: rf.Version, Resource: rf.Resource}
-		if v, err := r.dynamicClient.DynamicRead(ctx, gvr, rf.Name, rf.Namespace); err == nil || v != nil {
-			references[refName] = v
-		} else {
-			refErr = errors.Join(refErr, err)
-			logger.V(1).Info("error getting reference", "referenceName", rf.Name, "namespace", rf.Namespace, "gvr", gvr, "error", err, "refNil", v == nil)
-		}
-	}
-	data[templateDataReferences] = references
 
-	tinkWf, err := renderTemplateHardware(stored.Name, pointerToValue(tpl.Spec.Data), data)
+	status, err := render.RenderWorkflow(render.NewInput(stored, tpl, hardware, references))
 	if err != nil {
 		journal.Log(ctx, "error rendering template")
 		stored.Status.TemplateRendering = v1alpha1.TemplateRenderingFailed
@@ -375,7 +315,7 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 	}
 
 	// populate Task and Action data
-	stored.Status = *YAMLToStatus(tinkWf)
+	stored.Status = *status
 	stored.Status.TemplateRendering = v1alpha1.TemplateRenderingSuccessful
 	stored.Status.SetCondition(v1alpha1.WorkflowCondition{
 		Type:    v1alpha1.TemplateRenderedSuccess,
@@ -388,10 +328,33 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 	return nil
 }
 
+// processNewWorkflow decides whether stored's Template can be rendered immediately (the
+// default - matches every Template that predates render-on-checkin) or must be deferred
+// to the target Agent's first check-in (only Templates that opt in via
+// Spec.RequiresCheckIn, since only they can reference that check-in's live-reported
+// hardware attributes - see tink-server's doGetAction/renderOnCheckIn). Boot
+// orchestration is independent of rendering either way (it only needs Hardware.Spec,
+// never the rendered Template), so it runs immediately here regardless of which path is
+// taken.
 func (r *Reconciler) processNewWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) (reconcile.Result, error) {
-	if err := r.processWorkflow(ctx, logger, stored); err != nil {
+	tpl, err := r.readTemplate(ctx, logger, stored)
+	if err != nil {
 		return reconcile.Result{}, err
 	}
+
+	if tpl.Spec.RequiresCheckIn == nil || !*tpl.Spec.RequiresCheckIn {
+		if err := r.processWorkflow(ctx, logger, stored, tpl); err != nil {
+			return reconcile.Result{}, err
+		}
+		if stored.Spec.BootOptions.ToggleAllowNetboot || stored.Spec.BootOptions.BootMode != "" {
+			stored.Status.State = v1alpha1.WorkflowStatePreparing
+			return reconcile.Result{Requeue: true}, nil
+		}
+		stored.Status.State = v1alpha1.WorkflowStatePending
+		return reconcile.Result{}, nil
+	}
+
+	stored.Status.TemplateRendering = v1alpha1.TemplateRenderingDeferred
 
 	// set hardware allowPXE if requested.
 	if stored.Spec.BootOptions.ToggleAllowNetboot || stored.Spec.BootOptions.BootMode != "" {
@@ -399,66 +362,9 @@ func (r *Reconciler) processNewWorkflow(ctx context.Context, logger logr.Logger,
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	stored.Status.State = v1alpha1.WorkflowStatePending
+	stored.Status.State = v1alpha1.WorkflowStateAwaitingCheckIn
 
 	return reconcile.Result{}, nil
-}
-
-// structToMap converts a struct to a map[string]interface{}.
-func structToMap(item interface{}) (map[string]interface{}, error) {
-	result := make(map[string]interface{})
-
-	// Marshal the struct to JSON.
-	jsonBytes, err := json.Marshal(item)
-	if err != nil {
-		return nil, err
-	}
-
-	// Unmarshal the JSON to a map[string]interface{}.
-	if err = json.Unmarshal(jsonBytes, &result); err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// templateHardwareData defines the data exposed for a Hardware instance to a Template.
-type templateHardwareData struct {
-	Disks      []string
-	Interfaces []v1alpha1.Interface
-	UserData   string
-	Metadata   v1alpha1.HardwareMetadata
-	VendorData string
-}
-
-// toTemplateHardwareData converts a Hardware instance of templateHardwareData for use in template
-// rendering.
-func toTemplateHardwareData(hardware v1alpha1.Hardware) templateHardwareData {
-	var contract templateHardwareData
-	for _, disk := range hardware.Spec.Disks {
-		contract.Disks = append(contract.Disks, disk.Device)
-	}
-	if len(hardware.Spec.Interfaces) > 0 {
-		contract.Interfaces = hardware.Spec.Interfaces
-	}
-	if hardware.Spec.UserData != nil {
-		contract.UserData = pointerToValue(hardware.Spec.UserData)
-	}
-	if hardware.Spec.Metadata != nil {
-		contract.Metadata = *hardware.Spec.Metadata
-	}
-	if hardware.Spec.VendorData != nil {
-		contract.VendorData = pointerToValue(hardware.Spec.VendorData)
-	}
-	return contract
-}
-
-func pointerToValue[V any](ptr *V) V {
-	if ptr == nil {
-		var zero V
-		return zero
-	}
-	return *ptr
 }
 
 // firstAction returns the first Action of the first Task in the Workflow.

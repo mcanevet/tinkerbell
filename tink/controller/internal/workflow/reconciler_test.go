@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	v1alpha1 "github.com/tinkerbell/tinkerbell/api/v1alpha1/tinkerbell"
@@ -89,33 +90,6 @@ tasks:
           # Tootles IP
           IMG_URL: "http://10.1.1.11:8080/debian-10-openstack-amd64.raw.gz"
           COMPRESSED: true`
-
-var templateWithDiskTemplate = `version: "0.1"
-name: debian
-global_timeout: 1800
-tasks:
-  - name: "os-installation"
-    worker: "{{.device_1}}"
-    volumes:
-      - /dev:/dev
-      - /dev/console:/dev/console
-      - /lib/firmware:/lib/firmware:ro
-    actions:
-      - name: "stream-debian-image"
-        image: quay.io/tinkerbell-actions/image2disk:v1.0.0
-        timeout: 600
-        environment:
-          DEST_DISK: {{ index .Hardware.Disks 0 }}
-          # Tootles IP
-          IMG_URL: "http://10.1.1.11:8080/debian-10-openstack-amd64.raw.gz"
-          COMPRESSED: true
-      - name: "action to test templating"
-        image: alpine
-        timeout: 600
-        environment:
-          USER_DATA: {{ .Hardware.UserData }}
-          VENDOR_DATA: {{ .Hardware.VendorData }}
-          METADATA: {{ .Hardware.Metadata.State }}`
 
 func TestHandleHardwareAllowPXE(t *testing.T) {
 	tests := map[string]struct {
@@ -371,14 +345,13 @@ func TestReconcile(t *testing.T) {
 					AgentID:           "3c:ec:ef:4c:4f:54",
 					State:             v1alpha1.WorkflowStatePending,
 					GlobalTimeout:     1800,
-					TemplateRendering: "successful",
+					TemplateRendering: v1alpha1.TemplateRenderingSuccessful,
 					Conditions: []v1alpha1.WorkflowCondition{
 						{Type: v1alpha1.TemplateRenderedSuccess, Status: metav1.ConditionTrue, Reason: reasonComplete, Message: "template rendered successfully"},
 					},
 					Tasks: []v1alpha1.Task{
 						{
-							Name: "os-installation",
-
+							Name:    "os-installation",
 							AgentID: "3c:ec:ef:4c:4f:54",
 							Volumes: []string{
 								"/dev:/dev",
@@ -405,7 +378,10 @@ func TestReconcile(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "MalformedWorkflow",
+			// A Template opting into Spec.RequiresCheckIn defers rendering to the target
+			// Agent's first check-in instead of rendering immediately - see
+			// tink-server's doGetAction/renderOnCheckIn.
+			name: "NewWorkflowRequiresCheckIn",
 			seedTemplate: &v1alpha1.Template{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "Template",
@@ -416,12 +392,8 @@ func TestReconcile(t *testing.T) {
 					Namespace: "default",
 				},
 				Spec: v1alpha1.TemplateSpec{
-					Data: &[]string{`version: "0.1"
-					name: debian
-global_timeout: 1800
-tasks:
-	- name: "os-installation"
-		worker: "{{.device_1}}"`}[0],
+					Data:            &minimalTemplate,
+					RequiresCheckIn: &[]bool{true}[0],
 				},
 				Status: v1alpha1.TemplateStatus{},
 			},
@@ -441,39 +413,6 @@ tasks:
 					},
 				},
 				Status: v1alpha1.WorkflowStatus{},
-			},
-			seedHardware: &v1alpha1.Hardware{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Hardware",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "machine1",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.HardwareSpec{
-					Interfaces: []v1alpha1.Interface{
-						{
-							Netboot: &v1alpha1.Netboot{
-								AllowPXE:      &[]bool{true}[0],
-								AllowWorkflow: &[]bool{true}[0],
-							},
-							DHCP: &v1alpha1.DHCP{
-								Arch:     "x86_64",
-								Hostname: "sm01",
-								IP: &v1alpha1.IP{
-									Address: "172.16.10.100",
-									Gateway: "172.16.10.1",
-									Netmask: "255.255.255.0",
-								},
-								LeaseTime:   86400,
-								MAC:         "3c:ec:ef:4c:4f:54",
-								NameServers: []string{},
-								UEFI:        true,
-							},
-						},
-					},
-				},
 			},
 			req: reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -499,118 +438,11 @@ tasks:
 					},
 				},
 				Status: v1alpha1.WorkflowStatus{
-					State:         v1alpha1.WorkflowStatePending,
-					GlobalTimeout: 1800,
-					Tasks: []v1alpha1.Task{
-						{
-							Name: "os-installation",
-
-							AgentID: "3c:ec:ef:4c:4f:54",
-							Volumes: []string{
-								"/dev:/dev",
-								"/dev/console:/dev/console",
-								"/lib/firmware:/lib/firmware:ro",
-							},
-							Actions: []v1alpha1.Action{
-								{
-									Name:    "stream-debian-image",
-									Image:   "quay.io/tinkerbell-actions/image2disk:v1.0.0",
-									Timeout: 600,
-									Environment: map[string]string{
-										"COMPRESSED": valueTrue,
-										"DEST_DISK":  "/dev/nvme0n1",
-										"IMG_URL":    "http://10.1.1.11:8080/debian-10-openstack-amd64.raw.gz",
-									},
-									State: v1alpha1.WorkflowStatePending,
-								},
-							},
-						},
-					},
+					State:             v1alpha1.WorkflowStateAwaitingCheckIn,
+					TemplateRendering: v1alpha1.TemplateRenderingDeferred,
 				},
 			},
-			wantErr: errors.New("found character that cannot start any token"),
-		},
-		{
-			name: "MissingTemplate",
-			seedTemplate: &v1alpha1.Template{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Template",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "dummy",
-					Namespace: "default",
-				},
-				Spec:   v1alpha1.TemplateSpec{},
-				Status: v1alpha1.TemplateStatus{},
-			},
-			seedWorkflow: &v1alpha1.Workflow{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Workflow",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "debian",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.WorkflowSpec{
-					TemplateRef: "debian", // doesn't exist
-					HardwareMap: map[string]string{
-						"device_1": "3c:ec:ef:4c:4f:54",
-					},
-				},
-				Status: v1alpha1.WorkflowStatus{},
-			},
-			seedHardware: &v1alpha1.Hardware{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Hardware",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "machine1",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.HardwareSpec{
-					Interfaces: []v1alpha1.Interface{
-						{
-							Netboot: &v1alpha1.Netboot{
-								AllowPXE:      &[]bool{true}[0],
-								AllowWorkflow: &[]bool{true}[0],
-							},
-							DHCP: &v1alpha1.DHCP{
-								Arch:     "x86_64",
-								Hostname: "sm01",
-								IP: &v1alpha1.IP{
-									Address: "172.16.10.100",
-									Gateway: "172.16.10.1",
-									Netmask: "255.255.255.0",
-								},
-								LeaseTime:   86400,
-								MAC:         "3c:ec:ef:4c:4f:54",
-								NameServers: []string{},
-								UEFI:        true,
-							},
-						},
-					},
-				},
-			},
-			req: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      "debian",
-					Namespace: "default",
-				},
-			},
-			want: reconcile.Result{},
-			wantWflow: &v1alpha1.Workflow{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Workflow",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					ResourceVersion: "999",
-				},
-			},
-			wantErr: errors.New("no template found: name=debian; namespace=default"),
+			wantErr: nil,
 		},
 		{
 			name: "TimedOutWorkflow",
@@ -767,7 +599,185 @@ tasks:
 			wantErr: nil,
 		},
 		{
-			name: "ErrorGettingHardwareRef",
+			name: "DisabledNewWorkflow",
+			seedTemplate: &v1alpha1.Template{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Template",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.TemplateSpec{
+					Data: &minimalTemplate,
+				},
+				Status: v1alpha1.TemplateStatus{},
+			},
+			seedWorkflow: &v1alpha1.Workflow{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Workflow",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					Disabled:    &[]bool{true}[0],
+					HardwareMap: map[string]string{
+						"device_1": "3c:ec:ef:4c:4f:54",
+					},
+				},
+				Status: v1alpha1.WorkflowStatus{},
+			},
+			req: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "debian",
+					Namespace: "default",
+				},
+			},
+			want: reconcile.Result{},
+			wantWflow: &v1alpha1.Workflow{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Workflow",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					// Unchanged from creation - a disabled Workflow is never patched, so it
+					// stays at this zero-value State forever (see kube.WorkflowHardwareMapAgentIDs,
+					// which indexes it by Spec.HardwareMap instead of status.agentID).
+					ResourceVersion: "999",
+					Name:            "debian",
+					Namespace:       "default",
+				},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					Disabled:    &[]bool{true}[0],
+					HardwareMap: map[string]string{
+						"device_1": "3c:ec:ef:4c:4f:54",
+					},
+				},
+				Status: v1alpha1.WorkflowStatus{},
+			},
+			wantErr: nil,
+		},
+		{
+			// Only the deprecated STATE_PENDING path still exercises processWorkflow's
+			// error branches - every new Workflow now defers rendering to check-in and
+			// never hits processWorkflow at all.
+			name: "MalformedTemplateLegacyPending",
+			seedTemplate: &v1alpha1.Template{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Template",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.TemplateSpec{
+					Data: &[]string{`version: "0.1"
+				name: debian
+global_timeout: 1800
+tasks:
+	- name: "os-installation"
+		worker: "{{.device_1}}"`}[0],
+				},
+				Status: v1alpha1.TemplateStatus{},
+			},
+			seedWorkflow: &v1alpha1.Workflow{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Workflow",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					HardwareMap: map[string]string{
+						"device_1": "3c:ec:ef:4c:4f:54",
+					},
+				},
+				Status: v1alpha1.WorkflowStatus{
+					State: v1alpha1.WorkflowState("STATE_PENDING"),
+				},
+			},
+			seedHardware: &v1alpha1.Hardware{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Hardware",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "machine1",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.HardwareSpec{
+					Interfaces: []v1alpha1.Interface{
+						{
+							DHCP: &v1alpha1.DHCP{
+								MAC: "3c:ec:ef:4c:4f:54",
+							},
+						},
+					},
+				},
+			},
+			req: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "debian",
+					Namespace: "default",
+				},
+			},
+			want: reconcile.Result{},
+			wantWflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+			},
+			wantErr: errors.New("found character that cannot start any token"),
+		},
+		{
+			name: "MissingTemplateLegacyPending",
+			seedWorkflow: &v1alpha1.Workflow{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Workflow",
+					APIVersion: "tinkerbell.org/v1alpha1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian", // doesn't exist
+					HardwareMap: map[string]string{
+						"device_1": "3c:ec:ef:4c:4f:54",
+					},
+				},
+				Status: v1alpha1.WorkflowStatus{
+					State: v1alpha1.WorkflowState("STATE_PENDING"),
+				},
+			},
+			req: reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "debian",
+					Namespace: "default",
+				},
+			},
+			want: reconcile.Result{},
+			wantWflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "debian",
+					Namespace: "default",
+				},
+			},
+			wantErr: errors.New("no template found: name=debian; namespace=default"),
+		},
+		{
+			name: "HardwareNotFoundLegacyPending",
 			seedTemplate: &v1alpha1.Template{
 				TypeMeta: metav1.TypeMeta{
 					Kind:       "Template",
@@ -798,7 +808,9 @@ tasks:
 						"device_1": "3c:ec:ef:4c:4f:54",
 					},
 				},
-				Status: v1alpha1.WorkflowStatus{},
+				Status: v1alpha1.WorkflowStatus{
+					State: v1alpha1.WorkflowState("STATE_PENDING"),
+				},
 			},
 			req: reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -808,206 +820,12 @@ tasks:
 			},
 			want: reconcile.Result{},
 			wantWflow: &v1alpha1.Workflow{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Workflow",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
 				ObjectMeta: metav1.ObjectMeta{
-					ResourceVersion: "1000",
-					Name:            "debian",
-					Namespace:       "default",
-				},
-				Spec: v1alpha1.WorkflowSpec{
-					TemplateRef: "debian",
-					HardwareMap: map[string]string{
-						"device_1": "3c:ec:ef:4c:4f:54",
-					},
-				},
-				Status: v1alpha1.WorkflowStatus{
-					State:         v1alpha1.WorkflowStatePending,
-					GlobalTimeout: 1800,
-					Tasks: []v1alpha1.Task{
-						{
-							Name: "os-installation",
-
-							AgentID: "3c:ec:ef:4c:4f:54",
-							Volumes: []string{
-								"/dev:/dev",
-								"/dev/console:/dev/console",
-								"/lib/firmware:/lib/firmware:ro",
-							},
-							Actions: []v1alpha1.Action{
-								{
-									Name:    "stream-debian-image",
-									Image:   "quay.io/tinkerbell-actions/image2disk:v1.0.0",
-									Timeout: 600,
-									Environment: map[string]string{
-										"COMPRESSED": valueTrue,
-										"DEST_DISK":  "/dev/nvme0n1",
-										"IMG_URL":    "http://10.1.1.11:8080/debian-10-openstack-amd64.raw.gz",
-									},
-									State: v1alpha1.WorkflowStatePending,
-								},
-							},
-						},
-					},
+					Name:      "debian",
+					Namespace: "default",
 				},
 			},
 			wantErr: errors.New("hardware not found: name=i_dont_exist; namespace=default"),
-		},
-		{
-			name: "SuccessWithHardwareRef",
-			seedHardware: &v1alpha1.Hardware{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Hardware",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "machine1",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.HardwareSpec{
-					References: map[string]v1alpha1.Reference{
-						"hw": {
-							Name:      "machine1",
-							Namespace: "default",
-							Group:     "tinkerbell.org",
-							Version:   "v1alpha1",
-							Resource:  "hardware",
-						},
-					},
-					Disks: []v1alpha1.Disk{
-						{Device: "/dev/nvme0n1"},
-					},
-					Interfaces: []v1alpha1.Interface{
-						{
-							Netboot: &v1alpha1.Netboot{
-								AllowPXE:      &[]bool{true}[0],
-								AllowWorkflow: &[]bool{true}[0],
-							},
-							DHCP: &v1alpha1.DHCP{
-								Arch:     "x86_64",
-								Hostname: "sm01",
-								IP: &v1alpha1.IP{
-									Address: "172.16.10.100",
-									Gateway: "172.16.10.1",
-									Netmask: "255.255.255.0",
-								},
-								LeaseTime:   86400,
-								MAC:         "3c:ec:ef:4c:4f:54",
-								NameServers: []string{},
-								UEFI:        true,
-							},
-						},
-					},
-					UserData:   valueToPointer("user-data"),
-					Metadata:   &v1alpha1.HardwareMetadata{State: "active"},
-					VendorData: valueToPointer("vendor-data"),
-				},
-			},
-			seedTemplate: &v1alpha1.Template{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Template",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "debian",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.TemplateSpec{
-					Data: &templateWithDiskTemplate,
-				},
-				Status: v1alpha1.TemplateStatus{},
-			},
-			seedWorkflow: &v1alpha1.Workflow{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Workflow",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "debian",
-					Namespace: "default",
-				},
-				Spec: v1alpha1.WorkflowSpec{
-					TemplateRef: "debian",
-					HardwareRef: "machine1",
-					HardwareMap: map[string]string{
-						"device_1": "3c:ec:ef:4c:4f:54",
-					},
-				},
-				Status: v1alpha1.WorkflowStatus{},
-			},
-			req: reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      "debian",
-					Namespace: "default",
-				},
-			},
-			want: reconcile.Result{},
-			wantWflow: &v1alpha1.Workflow{
-				TypeMeta: metav1.TypeMeta{
-					Kind:       "Workflow",
-					APIVersion: "tinkerbell.org/v1alpha1",
-				},
-				ObjectMeta: metav1.ObjectMeta{
-					ResourceVersion: "1000",
-					Name:            "debian",
-					Namespace:       "default",
-				},
-				Spec: v1alpha1.WorkflowSpec{
-					TemplateRef: "debian",
-					HardwareRef: "machine1",
-					HardwareMap: map[string]string{
-						"device_1": "3c:ec:ef:4c:4f:54",
-					},
-				},
-				Status: v1alpha1.WorkflowStatus{
-					AgentID:           "3c:ec:ef:4c:4f:54",
-					State:             v1alpha1.WorkflowStatePending,
-					GlobalTimeout:     1800,
-					TemplateRendering: "successful",
-					Conditions: []v1alpha1.WorkflowCondition{
-						{Type: v1alpha1.TemplateRenderedSuccess, Status: metav1.ConditionTrue, Reason: reasonComplete, Message: "template rendered successfully"},
-					},
-					Tasks: []v1alpha1.Task{
-						{
-							Name: "os-installation",
-
-							AgentID: "3c:ec:ef:4c:4f:54",
-							Volumes: []string{
-								"/dev:/dev",
-								"/dev/console:/dev/console",
-								"/lib/firmware:/lib/firmware:ro",
-							},
-							Actions: []v1alpha1.Action{
-								{
-									Name:    "stream-debian-image",
-									Image:   "quay.io/tinkerbell-actions/image2disk:v1.0.0",
-									Timeout: 600,
-									Environment: map[string]string{
-										"COMPRESSED": valueTrue,
-										"DEST_DISK":  "/dev/nvme0n1",
-										"IMG_URL":    "http://10.1.1.11:8080/debian-10-openstack-amd64.raw.gz",
-									},
-									State: v1alpha1.WorkflowStatePending,
-								},
-								{
-									Name:    "action to test templating",
-									Image:   "alpine",
-									Timeout: 600,
-									Environment: map[string]string{
-										"USER_DATA":   "user-data",
-										"VENDOR_DATA": "vendor-data",
-										"METADATA":    "active",
-									},
-									State: v1alpha1.WorkflowStatePending,
-								},
-							},
-						},
-					},
-				},
-			},
-			wantErr: nil,
 		},
 	}
 
@@ -2056,6 +1874,99 @@ func TestReconcileWithMultipleTasksAndAgents(t *testing.T) {
 				t.Logf("got: %+v", wflow)
 				t.Logf("want: %+v", tc.wantWflow)
 				t.Errorf("unexpected difference:\n%v\nDescription: %s", diff, tc.description)
+			}
+		})
+	}
+}
+
+// TestProcessNewWorkflowDefersWhenRequiresCheckIn exercises processNewWorkflow's state
+// transitions for a Template that opts into Spec.RequiresCheckIn, across every
+// BootOptions combination - the immediate-rendering (default) path is covered by
+// TestReconcile's NewWorkflow case instead, since it needs actual Hardware/Template data
+// to render against.
+func TestProcessNewWorkflowDefersWhenRequiresCheckIn(t *testing.T) {
+	cases := []struct {
+		name          string
+		workflow      *v1alpha1.Workflow
+		wantState     v1alpha1.WorkflowState
+		wantRendering v1alpha1.TemplateRendering
+	}{
+		{
+			name: "no boot options defers straight to awaiting check-in",
+			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf1", Namespace: "default"},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					HardwareRef: "machine1",
+				},
+			},
+			wantState:     v1alpha1.WorkflowStateAwaitingCheckIn,
+			wantRendering: v1alpha1.TemplateRenderingDeferred,
+		},
+		{
+			name: "BootOptions.BootMode goes to preparing first, not awaiting check-in yet",
+			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf2", Namespace: "default"},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					HardwareRef: "machine1",
+					BootOptions: v1alpha1.BootOptions{
+						BootMode: v1alpha1.BootModeNetboot,
+					},
+				},
+			},
+			wantState:     v1alpha1.WorkflowStatePreparing,
+			wantRendering: v1alpha1.TemplateRenderingDeferred,
+		},
+		{
+			name: "ToggleAllowNetboot alone also goes to preparing first",
+			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf3", Namespace: "default"},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+					HardwareRef: "machine1",
+					BootOptions: v1alpha1.BootOptions{
+						ToggleAllowNetboot: true,
+					},
+				},
+			},
+			wantState:     v1alpha1.WorkflowStatePreparing,
+			wantRendering: v1alpha1.TemplateRenderingDeferred,
+		},
+		{
+			name: "no HardwareRef still defers - rendering, not boot orchestration, is what needs it",
+			workflow: &v1alpha1.Workflow{
+				ObjectMeta: metav1.ObjectMeta{Name: "wf4", Namespace: "default"},
+				Spec: v1alpha1.WorkflowSpec{
+					TemplateRef: "debian",
+				},
+			},
+			wantState:     v1alpha1.WorkflowStateAwaitingCheckIn,
+			wantRendering: v1alpha1.TemplateRenderingDeferred,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Hardware isn't seeded: the deferred path never reads it, only the immediate
+			// (non-RequiresCheckIn) path does.
+			kc := GetFakeClientBuilder().WithObjects(&v1alpha1.Template{
+				ObjectMeta: metav1.ObjectMeta{Name: "debian", Namespace: "default"},
+				Spec:       v1alpha1.TemplateSpec{Data: &minimalTemplate, RequiresCheckIn: &[]bool{true}[0]},
+			})
+			r := &Reconciler{client: kc.Build()}
+
+			if _, err := r.processNewWorkflow(context.Background(), logr.Discard(), tc.workflow); err != nil {
+				t.Fatalf("processNewWorkflow() error = %v", err)
+			}
+			if tc.workflow.Status.State != tc.wantState {
+				t.Errorf("State: got %q, want %q", tc.workflow.Status.State, tc.wantState)
+			}
+			if tc.workflow.Status.TemplateRendering != tc.wantRendering {
+				t.Errorf("TemplateRendering: got %q, want %q", tc.workflow.Status.TemplateRendering, tc.wantRendering)
+			}
+			if len(tc.workflow.Status.Tasks) != 0 {
+				t.Errorf("Tasks: got %d tasks, want 0 - the deferred path must never render", len(tc.workflow.Status.Tasks))
 			}
 		})
 	}

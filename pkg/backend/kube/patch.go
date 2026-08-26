@@ -25,6 +25,9 @@ func patchFromOpts(opts data.UpdateOptions) (client.Patch, error) {
 		if !ok {
 			return nil, fmt.Errorf("PatchFrom must be a client.Object, got %T", opts.PatchFrom)
 		}
+		if opts.OptimisticLock {
+			return client.MergeFromWithOptions(obj, client.MergeFromWithOptimisticLock{}), nil
+		}
 		return client.MergeFrom(obj), nil
 	case opts.RawPatch != nil:
 		if opts.RawPatchType == "" {

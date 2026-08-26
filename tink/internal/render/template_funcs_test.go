@@ -1,13 +1,36 @@
-package workflow
+package render
 
 import (
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"text/template"
 
 	"sigs.k8s.io/yaml"
 )
+
+// TestRenderConcurrent exercises the fix sharing a single safeFuncMap across every
+// Render call instead of rebuilding it each time - concurrent renders (now expected on
+// tink-server's check-in path, not just once per Workflow at creation) must not race.
+func TestRenderConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 50; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out, err := Render("concurrent", `{{ toYaml . }}`, map[string]string{"k": "v"})
+			if err != nil {
+				t.Errorf("Render() error = %v", err)
+				return
+			}
+			if !strings.Contains(string(out), "k: v") {
+				t.Errorf("Render() = %q, want it to contain %q", out, "k: v")
+			}
+		}()
+	}
+	wg.Wait()
+}
 
 func TestToYaml(t *testing.T) {
 	tests := []struct {
