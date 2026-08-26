@@ -22,6 +22,12 @@ const (
 	WorkflowStateFailed    = WorkflowState("FAILED")
 	WorkflowStateTimeout   = WorkflowState("TIMEOUT")
 
+	// WorkflowStateAwaitingCheckIn means the Workflow is waiting for the target Agent's
+	// first check-in before Tasks are populated. Template rendering always happens on
+	// check-in (see tink-server's doGetAction/renderOnCheckIn), not at Workflow creation,
+	// so the Template can reference that check-in's live-reported hardware attributes.
+	WorkflowStateAwaitingCheckIn = WorkflowState("AWAITING_CHECKIN")
+
 	BootJobFailed           WorkflowConditionType = "BootJobFailed"
 	BootJobComplete         WorkflowConditionType = "BootJobComplete"
 	BootJobRunning          WorkflowConditionType = "BootJobRunning"
@@ -33,6 +39,10 @@ const (
 
 	TemplateRenderingSuccessful TemplateRendering = "successful"
 	TemplateRenderingFailed     TemplateRendering = "failed"
+	// TemplateRenderingDeferred means rendering has not happened yet, pending the target
+	// Agent's first check-in - this is expected, not an error. Distinguish from
+	// TemplateRenderingFailed in tooling that surfaces this to operators.
+	TemplateRenderingDeferred TemplateRendering = "deferred"
 
 	BootModeNetboot    BootMode = "netboot"
 	BootModeISO        BootMode = "iso"

@@ -9,13 +9,15 @@ import (
 type IndexType string
 
 const (
-	IndexTypeMACAddr         IndexType = MACAddrIndex
-	IndexTypeIPAddr          IndexType = IPAddrIndex
-	IndexTypeHardwareName    IndexType = "hardware.metadata.name"
-	IndexTypeMachineName     IndexType = "machine.metadata.name"
-	IndexTypeWorkflowAgentID IndexType = WorkflowAgentIDIndex
-	IndexTypeHardwareAgentID IndexType = HardwareAgentIDIndex
-	IndexTypeInstanceID      IndexType = InstanceIDIndex
+	IndexTypeMACAddr             IndexType = MACAddrIndex
+	IndexTypeIPAddr              IndexType = IPAddrIndex
+	IndexTypeHardwareName        IndexType = "hardware.metadata.name"
+	IndexTypeMachineName         IndexType = "machine.metadata.name"
+	IndexTypeWorkflowAgentID     IndexType = WorkflowAgentIDIndex
+	IndexTypeWorkflowHardwareMap IndexType = WorkflowHardwareMapIndex
+	IndexTypeWorkflowHardwareRef IndexType = WorkflowHardwareRefIndex
+	IndexTypeHardwareAgentID     IndexType = HardwareAgentIDIndex
+	IndexTypeInstanceID          IndexType = InstanceIDIndex
 
 	// MACAddrIndex is an index used with a controller-runtime client to lookup hardware by MAC.
 	MACAddrIndex = ".Spec.Interfaces.MAC"
@@ -28,6 +30,15 @@ const (
 
 	// WorkflowAgentIDIndex is an index used with a controller-runtime client to lookup workflows by their status agent id.
 	WorkflowAgentIDIndex = ".status.agentID"
+
+	// WorkflowHardwareMapIndex is an index used with a controller-runtime client to lookup
+	// workflows by any Agent ID referenced in their spec hardware map.
+	WorkflowHardwareMapIndex = ".spec.hardwareMap"
+
+	// WorkflowHardwareRefIndex is an index used with a controller-runtime client to lookup
+	// workflows by their spec hardwareRef (a Hardware object's name, not an Agent ID - see
+	// WorkflowHardwareRefs).
+	WorkflowHardwareRefIndex = ".spec.hardwareRef"
 
 	// HardwareAgentIDIndex is an index used with a controller-runtime client to lookup hardware by their spec agent id.
 	HardwareAgentIDIndex = ".spec.agentID"
@@ -63,6 +74,16 @@ var Indexes = map[IndexType]Index{
 		Obj:          &tinkerbell.Workflow{},
 		Field:        WorkflowAgentIDIndex,
 		ExtractValue: WorkflowAgentID,
+	},
+	IndexTypeWorkflowHardwareMap: {
+		Obj:          &tinkerbell.Workflow{},
+		Field:        WorkflowHardwareMapIndex,
+		ExtractValue: WorkflowHardwareMapAgentIDs,
+	},
+	IndexTypeWorkflowHardwareRef: {
+		Obj:          &tinkerbell.Workflow{},
+		Field:        WorkflowHardwareRefIndex,
+		ExtractValue: WorkflowHardwareRefs,
 	},
 	IndexTypeHardwareAgentID: {
 		Obj:          &tinkerbell.Hardware{},
@@ -145,6 +166,67 @@ func WorkflowAgentID(obj client.Object) []string {
 		return []string{}
 	}
 	return []string{wf.Status.AgentID}
+}
+
+// workflowAwaitingRender reports whether wf is in one of the pre-render states: "" (not
+// yet reconciled at all, e.g. a permanently Spec.Disabled Workflow, which never
+// progresses past this zero value), WorkflowStatePreparing (boot orchestration, which can
+// run for a while and also never sets Status.AgentID), or WorkflowStateAwaitingCheckIn.
+//
+// Shared by every Workflow field index that needs to find a Workflow before it has ever
+// rendered (and so before it has a status.agentID) - WorkflowHardwareMapAgentIDs and
+// WorkflowHardwareRefs. Once a Workflow leaves all three states (rendered successfully,
+// or otherwise), it's either found by WorkflowAgentID (status.agentID now set) or
+// intentionally not re-discoverable by either Spec-based index at all - Workflows are
+// never garbage collected, so an unscoped index would resurface every Success/Failed
+// Workflow that ever referenced this Agent for the rest of that Workflow's lifetime, and
+// doGetAction hard-errors the whole request on the first non-pending/running Workflow it
+// sees rather than skipping it.
+func workflowAwaitingRender(wf *tinkerbell.Workflow) bool {
+	switch wf.Status.State {
+	case "", tinkerbell.WorkflowStatePreparing, tinkerbell.WorkflowStateAwaitingCheckIn:
+		return true
+	default:
+		return false
+	}
+}
+
+// WorkflowHardwareMapAgentIDs extracts every Agent ID (MAC address) referenced by a
+// Workflow's Spec.HardwareMap, for field indexing. Unlike WorkflowAgentID (status,
+// populated only once a Workflow has rendered), this is known from Spec at creation
+// time, so it's what a Workflow awaiting its target Agent's first check-in (before
+// rendering has ever run, and Status.AgentID is therefore still empty) can be found by.
+// See workflowAwaitingRender for the state scoping.
+func WorkflowHardwareMapAgentIDs(obj client.Object) []string {
+	wf, ok := obj.(*tinkerbell.Workflow)
+	if !ok {
+		return nil
+	}
+	if !workflowAwaitingRender(wf) || len(wf.Spec.HardwareMap) == 0 {
+		return []string{}
+	}
+	ids := make([]string, 0, len(wf.Spec.HardwareMap))
+	for _, agentID := range wf.Spec.HardwareMap {
+		ids = append(ids, agentID)
+	}
+	return ids
+}
+
+// WorkflowHardwareRefs extracts a Workflow's Spec.HardwareRef - a Hardware object's
+// name, not an Agent ID - for field indexing. This is what lets a Workflow addressed the
+// ordinary single-machine way (HardwareRef only, no HardwareMap) be found before it has
+// ever rendered: ListWorkflows resolves the target Agent ID to its own Hardware's name
+// first (via HardwareAgentIDIndex), then queries this index by that name. See
+// workflowAwaitingRender for the state scoping.
+func WorkflowHardwareRefs(obj client.Object) []string {
+	wf, ok := obj.(*tinkerbell.Workflow)
+	if !ok {
+		return nil
+	}
+	if !workflowAwaitingRender(wf) || wf.Spec.HardwareRef == "" {
+		return []string{}
+	}
+	return []string{wf.Spec.HardwareRef}
 }
 
 // HardwareAgentID extracts the agent ID from a Hardware's spec for field indexing.

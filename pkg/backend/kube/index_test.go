@@ -2,6 +2,7 @@ package kube
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -164,6 +165,87 @@ func TestWorkflowByAgentIDFunc(t *testing.T) {
 			gotStateAddrs := WorkflowAgentID(tc.input)
 			if !reflect.DeepEqual(tc.wantStateAddrs, gotStateAddrs) {
 				t.Errorf("Unexpected WorkflowByAgentIDFunc workflow response: wanted %#v, got %#v", tc.wantStateAddrs, gotStateAddrs)
+			}
+		})
+	}
+}
+
+func TestWorkflowHardwareMapAgentIDs(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   client.Object
+		wantIDs []string
+	}{
+		{
+			"not a workflow",
+			&v1alpha1.Hardware{},
+			nil,
+		},
+		{
+			"no hardware map",
+			&v1alpha1.Workflow{},
+			[]string{},
+		},
+		{
+			"single device, not yet rendered",
+			&v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{State: v1alpha1.WorkflowStateAwaitingCheckIn},
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareMap: map[string]string{"device_1": "aa:bb:cc:dd:ee:ff"},
+				},
+			},
+			[]string{"aa:bb:cc:dd:ee:ff"},
+		},
+		{
+			"multiple devices, not yet rendered",
+			&v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{State: v1alpha1.WorkflowStateAwaitingCheckIn},
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareMap: map[string]string{
+						"device_1": "aa:bb:cc:dd:ee:ff",
+						"device_2": "11:22:33:44:55:66",
+					},
+				},
+			},
+			[]string{"11:22:33:44:55:66", "aa:bb:cc:dd:ee:ff"},
+		},
+		{
+			"single device, already rendered - not re-discoverable via hardware map",
+			&v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{State: v1alpha1.WorkflowStatePending},
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareMap: map[string]string{"device_1": "aa:bb:cc:dd:ee:ff"},
+				},
+			},
+			[]string{},
+		},
+		{
+			"single device, boot preparing - still discoverable before Status.AgentID ever gets set",
+			&v1alpha1.Workflow{
+				Status: v1alpha1.WorkflowStatus{State: v1alpha1.WorkflowStatePreparing},
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareMap: map[string]string{"device_1": "aa:bb:cc:dd:ee:ff"},
+				},
+			},
+			[]string{"aa:bb:cc:dd:ee:ff"},
+		},
+		{
+			"single device, zero-value State (e.g. a permanently disabled Workflow) - still discoverable",
+			&v1alpha1.Workflow{
+				Spec: v1alpha1.WorkflowSpec{
+					HardwareMap: map[string]string{"device_1": "aa:bb:cc:dd:ee:ff"},
+				},
+			},
+			[]string{"aa:bb:cc:dd:ee:ff"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := WorkflowHardwareMapAgentIDs(tc.input)
+			sort.Strings(got)
+			if diff := cmp.Diff(tc.wantIDs, got); diff != "" {
+				t.Errorf("WorkflowHardwareMapAgentIDs() mismatch (-want +got):\n%s", diff)
 			}
 		})
 	}

@@ -8,9 +8,22 @@ import (
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
 	v1alpha1 "github.com/tinkerbell/tinkerbell/api/v1alpha1/tinkerbell"
 	"github.com/tinkerbell/tinkerbell/pkg/journal"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
+
+// postPrepareState returns the State prepareWorkflow should transition to once boot
+// orchestration completes. A Workflow whose Template opted into Spec.RequiresCheckIn
+// hasn't rendered yet (TemplateRendering is still Deferred) and must wait for the target
+// Agent's first check-in; every other Workflow was already rendered immediately by
+// processNewWorkflow before boot orchestration ever ran, and is ready to serve now.
+func (s *state) postPrepareState() v1alpha1.WorkflowState {
+	if s.workflow.Status.TemplateRendering == v1alpha1.TemplateRenderingDeferred {
+		return v1alpha1.WorkflowStateAwaitingCheckIn
+	}
+	return v1alpha1.WorkflowStatePending
+}
 
 // prepareWorkflow prepares the workflow for execution.
 // The workflow (s.workflow) can be updated even if an error occurs.
@@ -77,7 +90,7 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
@@ -146,7 +159,7 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
@@ -185,12 +198,12 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
 	default:
-		s.workflow.Status.State = v1alpha1.WorkflowStatePending
+		s.workflow.Status.State = s.postPrepareState()
 	}
 
 	return reconcile.Result{}, nil
@@ -242,7 +255,7 @@ func templateActions(actions []bmc.Action, hw *v1alpha1.Hardware) ([]bmc.Action,
 
 // templateString executes a Go template string with the provided data.
 func templateString(tmplStr string, data templateData) (string, error) {
-	rendered, err := renderTemplate("action", tmplStr, data)
+	rendered, err := render.Render("action", tmplStr, data)
 	if err != nil {
 		return "", err
 	}

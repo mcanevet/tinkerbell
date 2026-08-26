@@ -1,4 +1,4 @@
-package workflow
+package render
 
 import (
 	"bytes"
@@ -23,23 +23,28 @@ var templateFuncs = map[string]interface{}{
 	"fromYaml":              fromYaml,
 }
 
-// safeFuncMap returns the functions available to workflow templates. It uses
-// Sprig's hermetic function map, which excludes non-repeatable and unsafe
-// functions such as env, expandenv, and getHostByName.
-func safeFuncMap() template.FuncMap {
+// safeFuncMap is the function map available to workflow templates - Sprig's hermetic
+// function map (excludes non-repeatable and unsafe functions such as env, expandenv,
+// and getHostByName) merged with templateFuncs. Built once at package init rather than
+// per Render call: this now runs on tink-server's Agent-blocking check-in path (not just
+// once per Workflow at creation), and the map is read-only after construction -
+// (*template.Template).Funcs only copies entries out of it, never mutates it, so sharing
+// it across concurrent renders is safe.
+var safeFuncMap = func() template.FuncMap {
 	fm := sprig.HermeticTxtFuncMap()
 	for k, v := range templateFuncs {
 		fm[k] = v
 	}
 	return fm
-}
+}()
 
-// renderTemplate parses and executes a Go template with the hermetic function
-// map, erroring on missing keys and capping output at maxRenderBytes.
-func renderTemplate(name, tmplStr string, data interface{}) ([]byte, error) {
+// Render parses and executes a Go template with the hermetic function map, erroring on
+// missing keys and capping output at maxRenderBytes. Exported for callers that render a
+// plain string (e.g. customboot BMC Action templating) rather than a full Workflow Template.
+func Render(name, tmplStr string, data interface{}) ([]byte, error) {
 	t, err := template.New(name).
 		Option("missingkey=error").
-		Funcs(safeFuncMap()).
+		Funcs(safeFuncMap).
 		Parse(tmplStr)
 	if err != nil {
 		return nil, err
