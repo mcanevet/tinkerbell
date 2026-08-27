@@ -92,26 +92,36 @@ func newClientBuilder() *fake.ClientBuilder {
 }
 
 type testProvider struct {
-	PName                  string
-	Proto                  string
-	Powerstate             string
-	PowerSetOK             bool
-	BootdeviceOK           bool
-	VirtualMediaOK         bool
-	SecureBootEnabled      bool
-	ErrOpen                error
-	ErrClose               error
-	ErrPowerStateGet       error
-	ErrPowerStateSet       error
-	ErrBootDeviceSet       error
-	ErrVirtualMediaInsert  error
-	ErrGetSecureBoot       error
-	ErrSetSecureBoot       error
-	ErrResetSecureBootKeys error
+	PName                          string
+	Proto                          string
+	Powerstate                     string
+	PowerSetOK                     bool
+	BootdeviceOK                   bool
+	VirtualMediaOK                 bool
+	SecureBootEnabled              bool
+	ErrOpen                        error
+	ErrClose                       error
+	ErrPowerStateGet               error
+	ErrPowerStateSet               error
+	ErrBootDeviceSet               error
+	ErrVirtualMediaInsert          error
+	ErrGetSecureBoot               error
+	ErrSetSecureBoot               error
+	ErrResetSecureBootKeys         error
+	ErrResetSecureBootDatabaseKeys error
+	ErrImportSecureBootCertificate error
 
 	// ResetSecureBootKeysCalledWith records the resetType passed to the last
 	// ResetSecureBootKeys call, so tests can assert it was forwarded correctly.
 	ResetSecureBootKeysCalledWith string
+
+	// ResetSecureBootDatabaseKeysCalledWith records the database/resetType passed
+	// to the last ResetSecureBootDatabaseKeys call.
+	ResetSecureBootDatabaseKeysCalledWith [2]string
+
+	// ImportSecureBootCertificateCalledWith records the database/certificatePEM
+	// passed to the last ImportSecureBootCertificate call.
+	ImportSecureBootCertificateCalledWith [2]string
 
 	// InventoryDevice and ErrInventory control the Inventory() implementation
 	// below, used to test BMC inventory collection without a live BMC or a
@@ -147,6 +157,8 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureGetSecureBoot,
 		providers.FeatureSetSecureBoot,
 		providers.FeatureResetSecureBootKeys,
+		providers.FeatureResetSecureBootDatabaseKeys,
+		providers.FeatureImportSecureBootCertificate,
 	}
 }
 
@@ -196,6 +208,16 @@ func (t *testProvider) SetSecureBoot(_ context.Context, enable bool) error {
 func (t *testProvider) ResetSecureBootKeys(_ context.Context, resetType string) error {
 	t.ResetSecureBootKeysCalledWith = resetType
 	return t.ErrResetSecureBootKeys
+}
+
+func (t *testProvider) ResetSecureBootDatabaseKeys(_ context.Context, database, resetType string) error {
+	t.ResetSecureBootDatabaseKeysCalledWith = [2]string{database, resetType}
+	return t.ErrResetSecureBootDatabaseKeys
+}
+
+func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database, certificatePEM string) error {
+	t.ImportSecureBootCertificateCalledWith = [2]string{database, certificatePEM}
+	return t.ErrImportSecureBootCertificate
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.

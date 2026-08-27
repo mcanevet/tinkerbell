@@ -65,6 +65,12 @@ type Action struct {
 
 	// SecureBootResetKeys represents resetting the UEFI Secure Boot key databases.
 	SecureBootResetKeys *SecureBootResetKeysAction `json:"secureBootResetKeys,omitempty"`
+
+	// SecureBootDatabaseResetKeys represents resetting a single UEFI Secure Boot key database.
+	SecureBootDatabaseResetKeys *SecureBootDatabaseResetKeysAction `json:"secureBootDatabaseResetKeys,omitempty"`
+
+	// SecureBootCertificateImport represents importing a certificate into a single UEFI Secure Boot key database.
+	SecureBootCertificateImport *SecureBootCertificateImportAction `json:"secureBootCertificateImport,omitempty"`
 }
 
 // TaskStatus defines the observed state of Task.
