@@ -4,6 +4,7 @@ import (
 	"context"
 
 	bmclib "github.com/bmc-toolbox/bmclib/v2"
+	bmclibbmc "github.com/bmc-toolbox/bmclib/v2/bmc"
 	"github.com/bmc-toolbox/bmclib/v2/providers"
 	common "github.com/bmc-toolbox/common"
 	"github.com/go-logr/logr"
@@ -205,18 +206,18 @@ func (t *testProvider) SetSecureBoot(_ context.Context, enable bool) error {
 	return t.ErrSetSecureBoot
 }
 
-func (t *testProvider) ResetSecureBootKeys(_ context.Context, resetType string) error {
-	t.ResetSecureBootKeysCalledWith = resetType
+func (t *testProvider) ResetSecureBootKeys(_ context.Context, resetType bmclibbmc.ResetSecureBootKeysType) error {
+	t.ResetSecureBootKeysCalledWith = string(resetType)
 	return t.ErrResetSecureBootKeys
 }
 
-func (t *testProvider) ResetSecureBootDatabaseKeys(_ context.Context, database, resetType string) error {
-	t.ResetSecureBootDatabaseKeysCalledWith = [2]string{database, resetType}
+func (t *testProvider) ResetSecureBootDatabaseKeys(_ context.Context, database bmclibbmc.SecureBootDatabase, resetType bmclibbmc.ResetSecureBootDatabaseKeysType) error {
+	t.ResetSecureBootDatabaseKeysCalledWith = [2]string{string(database), string(resetType)}
 	return t.ErrResetSecureBootDatabaseKeys
 }
 
-func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database, certificatePEM string) error {
-	t.ImportSecureBootCertificateCalledWith = [2]string{database, certificatePEM}
+func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database bmclibbmc.SecureBootDatabase, certificatePEM string) error {
+	t.ImportSecureBootCertificateCalledWith = [2]string{string(database), certificatePEM}
 	return t.ErrImportSecureBootCertificate
 }
 

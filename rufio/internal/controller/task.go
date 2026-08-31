@@ -20,6 +20,7 @@ import (
 	"time"
 
 	bmclib "github.com/bmc-toolbox/bmclib/v2"
+	bmclibbmc "github.com/bmc-toolbox/bmclib/v2/bmc"
 	"github.com/go-logr/logr"
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -259,7 +260,7 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 	}
 
 	if task.SecureBootResetKeys != nil {
-		if err := bmcClient.ResetSecureBootKeys(ctx, task.SecureBootResetKeys.ResetType); err != nil {
+		if err := bmcClient.ResetSecureBootKeys(ctx, bmclibbmc.ResetSecureBootKeysType(task.SecureBootResetKeys.ResetType)); err != nil {
 			return fmt.Errorf("failed to perform ResetSecureBootKeys: %w", err)
 		}
 		md := bmcClient.GetMetadata()
@@ -269,7 +270,7 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 	}
 
 	if task.SecureBootDatabaseResetKeys != nil {
-		if err := bmcClient.ResetSecureBootDatabaseKeys(ctx, task.SecureBootDatabaseResetKeys.Database, task.SecureBootDatabaseResetKeys.ResetType); err != nil {
+		if err := bmcClient.ResetSecureBootDatabaseKeys(ctx, bmclibbmc.SecureBootDatabase(task.SecureBootDatabaseResetKeys.Database), bmclibbmc.ResetSecureBootDatabaseKeysType(task.SecureBootDatabaseResetKeys.ResetType)); err != nil {
 			return fmt.Errorf("failed to perform ResetSecureBootDatabaseKeys: %w", err)
 		}
 		md := bmcClient.GetMetadata()
@@ -283,7 +284,7 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 		if err != nil {
 			return fmt.Errorf("resolving certificatePEMConfigMapRef: %w", err)
 		}
-		if err := bmcClient.ImportSecureBootCertificate(ctx, task.SecureBootCertificateImport.Database, certificatePEM); err != nil {
+		if err := bmcClient.ImportSecureBootCertificate(ctx, bmclibbmc.SecureBootDatabase(task.SecureBootCertificateImport.Database), certificatePEM); err != nil {
 			return fmt.Errorf("failed to perform ImportSecureBootCertificate: %w", err)
 		}
 		md := bmcClient.GetMetadata()

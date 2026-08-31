@@ -330,4 +330,4 @@ replace k8s.io/cri-streaming => k8s.io/cri-streaming v0.36.3
 
 replace k8s.io/streaming => k8s.io/streaming v0.36.3
 
-replace github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260826162120-bb962e9a993a
+replace github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260831073621-5b23fe2edf23
