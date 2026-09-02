@@ -144,3 +144,52 @@ func createJob(name string, machine *bmc.Machine, t ...bmc.Action) *bmc.Job {
 		},
 	}
 }
+
+// TestJobReconcileTaskAlreadyExists reproduces a Job reconcile racing with
+// itself: the Task for the current index has already been created, and the
+// reconciler must treat that as the desired state rather than an error.
+//
+// Seen in production while 27 Workflows were synced at once - two Jobs failed
+// with "failed to create Task .../<job>-task-0: tasks.bmc.tinkerbell.org
+// "<job>-task-0" already exists", marking the Workflow FAILED even though the
+// Task existed and its action had completed successfully.
+func TestJobReconcileTaskAlreadyExists(t *testing.T) {
+	machine := createMachine()
+	secret := createSecret()
+	job := createJob("test", createMachine(), getAction("PowerOn"))
+
+	// The Task a previous reconcile of this same Job already created.
+	existing := &bmc.Task{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      bmc.FormatTaskName(*job, 0),
+			Namespace: job.Namespace,
+		},
+		Spec: bmc.TaskSpec{Task: job.Spec.Tasks[0]},
+	}
+
+	clnt := newClientBuilder().
+		WithObjects(job, machine, secret, existing).
+		WithIndex(&bmc.Task{}, ".metadata.controller", controller.TaskOwnerIndexFunc).
+		Build()
+
+	reconciler := controller.NewJobReconciler(clnt)
+
+	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+		NamespacedName: types.NamespacedName{Namespace: job.Namespace, Name: job.Name},
+	})
+	if err != nil {
+		t.Fatalf("reconcile must be idempotent when the Task already exists, got: %v", err)
+	}
+
+	// The Job must not be marked Failed for an already-existing Task.
+	var got bmc.Job
+	if err := clnt.Get(context.Background(),
+		types.NamespacedName{Namespace: job.Namespace, Name: job.Name}, &got); err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	for _, c := range got.Status.Conditions {
+		if c.Type == bmc.JobFailed && c.Status == bmc.ConditionTrue {
+			t.Fatalf("Job marked Failed for an already-existing Task: %s", c.Message)
+		}
+	}
+}

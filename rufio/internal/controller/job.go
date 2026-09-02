@@ -205,8 +205,14 @@ func (r *JobReconciler) createTaskWithOwner(ctx context.Context, job bmc.Job, ta
 		},
 	}
 
+	// A Task name is derived from the Job name and the task index, so an
+	// AlreadyExists here means a previous reconcile of this same Job already
+	// created it. That is the desired state, not a failure - returning an error
+	// marks the Job, and with it the Workflow, as failed even though the Task
+	// exists and may already have completed. Reconciles are requeued routinely,
+	// and the race is easy to hit when many Jobs are created at once.
 	err := r.client.Create(ctx, task)
-	if err != nil {
+	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create Task %s/%s: %w", task.Namespace, task.Name, err)
 	}
 
