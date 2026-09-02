@@ -59,6 +59,11 @@ type Action struct {
 
 	// VirtualMediaAction represents a baseboard management virtual media insert/eject.
 	VirtualMediaAction *VirtualMediaAction `json:"virtualMediaAction,omitempty"`
+
+	// NetworkBootConfig enables/disables network boot protocol capabilities (UEFI HTTP Boot,
+	// legacy PXE) in BIOS/UEFI firmware. Currently supported on Supermicro/AMI Aptio hardware
+	// only — see internal/netboot.
+	NetworkBootConfig *NetworkBootConfig `json:"networkBootConfig,omitempty"`
 }
 
 // TaskStatus defines the observed state of Task.

@@ -113,6 +113,15 @@ type testProvider struct {
 	InventoryDevice *common.Device
 	ErrInventory    error
 	InventoryCalls  int
+
+	// BiosConfig, ErrBiosConfigGet, and ErrBiosConfigSet control the
+	// GetBiosConfiguration/SetBiosConfiguration implementations below, used to test
+	// HTTPBootEnabled without a live BMC. SetBiosConfigCalls records every map passed to
+	// SetBiosConfiguration, so tests can assert on the resolved attributes.
+	BiosConfig         map[string]string
+	ErrBiosConfigGet   error
+	ErrBiosConfigSet   error
+	SetBiosConfigCalls []map[string]string
 }
 
 func (t *testProvider) Name() string {
@@ -169,6 +178,15 @@ func (t *testProvider) BootDeviceSet(_ context.Context, _ string, _, _ bool) (ok
 
 func (t *testProvider) SetVirtualMedia(_ context.Context, _ string, _ string) (ok bool, err error) {
 	return t.VirtualMediaOK, t.ErrVirtualMediaInsert
+}
+
+func (t *testProvider) GetBiosConfiguration(_ context.Context) (map[string]string, error) {
+	return t.BiosConfig, t.ErrBiosConfigGet
+}
+
+func (t *testProvider) SetBiosConfiguration(_ context.Context, biosConfig map[string]string) error {
+	t.SetBiosConfigCalls = append(t.SetBiosConfigCalls, biosConfig)
+	return t.ErrBiosConfigSet
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.

@@ -32,6 +32,14 @@ func getAction(s string) bmc.Action {
 		return bmc.Action{OneTimeBootDeviceAction: &bmc.OneTimeBootDeviceAction{Devices: []bmc.BootDevice{bmc.PXE}}}
 	case "VirtualMedia":
 		return bmc.Action{VirtualMediaAction: &bmc.VirtualMediaAction{MediaURL: "http://example.com/image.iso", Kind: bmc.VirtualMediaCD}}
+	case "HTTPBootEnabled":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootEnabled: toPtr(true)}}
+	case "HTTPBootDisabled":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootEnabled: toPtr(false)}}
+	case "PXEBootEnabled":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{PXEBootEnabled: toPtr(true)}}
+	case "HTTPAndPXEBootEnabled":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootEnabled: toPtr(true), PXEBootEnabled: toPtr(true)}}
 	default:
 		return bmc.Action{}
 	}
@@ -149,6 +157,44 @@ func TestTaskReconcile(t *testing.T) {
 			action:    bmc.Action{},
 			provider:  &testProvider{},
 			shouldErr: true,
+		},
+		"success http boot enabled": {
+			taskName: "HTTPBootEnabled",
+			action:   getAction("HTTPBootEnabled"),
+			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}},
+		},
+		"success http boot disabled": {
+			taskName: "HTTPBootDisabled",
+			action:   getAction("HTTPBootDisabled"),
+			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Enabled"}},
+		},
+		"failure on http boot get bios configuration": {
+			taskName:  "HTTPBootEnabled",
+			action:    getAction("HTTPBootEnabled"),
+			provider:  &testProvider{ErrBiosConfigGet: errors.New("failed to get bios configuration")},
+			shouldErr: true,
+		},
+		"failure on http boot unknown bios fingerprint": {
+			taskName:  "HTTPBootEnabled",
+			action:    getAction("HTTPBootEnabled"),
+			provider:  &testProvider{BiosConfig: map[string]string{"SomeOtherAttribute": "value"}},
+			shouldErr: true,
+		},
+		"failure on http boot set bios configuration": {
+			taskName:  "HTTPBootEnabled",
+			action:    getAction("HTTPBootEnabled"),
+			provider:  &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}, ErrBiosConfigSet: errors.New("failed to set bios configuration")},
+			shouldErr: true,
+		},
+		"success pxe boot enabled": {
+			taskName: "PXEBootEnabled",
+			action:   getAction("PXEBootEnabled"),
+			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Enabled"}},
+		},
+		"success http and pxe boot both enabled": {
+			taskName: "HTTPAndPXEBootEnabled",
+			action:   getAction("HTTPAndPXEBootEnabled"),
+			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}},
 		},
 	}
 

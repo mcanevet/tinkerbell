@@ -59,6 +59,21 @@ type BootDeviceConfig struct {
 	EFIBoot bool `json:"efiBoot,omitempty"`
 }
 
+// NetworkBootConfig represents the configuration for enabling/disabling network boot protocol
+// capabilities (UEFI HTTP Boot, legacy PXE) in BIOS/UEFI firmware. Unlike BootDevice (which
+// selects among existing boot options), this creates or removes the boot options themselves.
+// HTTPBootEnabled and PXEBootEnabled are independent — either, both, or neither protocol may be
+// enabled at once; a nil field leaves that protocol's BIOS attributes untouched.
+// +kubebuilder:validation:MinProperties:=1
+type NetworkBootConfig struct {
+	// HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
+	// IPv6 both.
+	HTTPBootEnabled *bool `json:"httpBootEnabled,omitempty"`
+
+	// PXEBootEnabled enables (true) or disables (false) legacy PXE boot capability.
+	PXEBootEnabled *bool `json:"pxeBootEnabled,omitempty"`
+}
+
 func (b BootDevice) String() string {
 	return string(b)
 }

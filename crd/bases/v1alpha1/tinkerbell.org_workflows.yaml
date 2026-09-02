@@ -116,6 +116,23 @@ spec:
                                     boot device.
                                   type: boolean
                               type: object
+                            networkBootConfig:
+                              description: |-
+                                NetworkBootConfig enables/disables network boot protocol capabilities (UEFI HTTP Boot,
+                                legacy PXE) in BIOS/UEFI firmware. Currently supported on Supermicro/AMI Aptio hardware
+                                only — see internal/netboot.
+                              minProperties: 1
+                              properties:
+                                httpBootEnabled:
+                                  description: |-
+                                    HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
+                                    IPv6 both.
+                                  type: boolean
+                                pxeBootEnabled:
+                                  description: PXEBootEnabled enables (true) or disables
+                                    (false) legacy PXE boot capability.
+                                  type: boolean
+                              type: object
                             oneTimeBootDeviceAction:
                               description: |-
                                 OneTimeBootDeviceAction represents a baseboard management one time set boot device operation.
@@ -194,6 +211,23 @@ spec:
                                   description: Persistent indicates whether the boot
                                     device should be set persistently as the first
                                     boot device.
+                                  type: boolean
+                              type: object
+                            networkBootConfig:
+                              description: |-
+                                NetworkBootConfig enables/disables network boot protocol capabilities (UEFI HTTP Boot,
+                                legacy PXE) in BIOS/UEFI firmware. Currently supported on Supermicro/AMI Aptio hardware
+                                only — see internal/netboot.
+                              minProperties: 1
+                              properties:
+                                httpBootEnabled:
+                                  description: |-
+                                    HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
+                                    IPv6 both.
+                                  type: boolean
+                                pxeBootEnabled:
+                                  description: PXEBootEnabled enables (true) or disables
+                                    (false) legacy PXE boot capability.
                                   type: boolean
                               type: object
                             oneTimeBootDeviceAction:
