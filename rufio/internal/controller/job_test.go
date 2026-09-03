@@ -61,7 +61,7 @@ func TestJobReconcile(t *testing.T) {
 				WithIndex(&bmc.Task{}, ".metadata.controller", controller.TaskOwnerIndexFunc).
 				Build()
 
-			reconciler := controller.NewJobReconciler(clnt)
+			reconciler := controller.NewJobReconciler(clnt, clnt)
 
 			request := reconcile.Request{
 				NamespacedName: types.NamespacedName{
@@ -203,7 +203,10 @@ func TestJobReconcileTaskAlreadyExists(t *testing.T) {
 		Build()
 	clnt := interceptor.NewClient(base, staleList())
 
-	reconciler := controller.NewJobReconciler(clnt)
+	// apiReader reads directly against base, bypassing the stale List seen
+	// by the cache client - modeling mgr.GetAPIReader() talking straight to
+	// the API server instead of the informer cache.
+	reconciler := controller.NewJobReconciler(clnt, base)
 
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: job.Namespace, Name: job.Name},
@@ -264,7 +267,7 @@ func TestJobReconcileTaskAlreadyExistsForeignOwner(t *testing.T) {
 		Build()
 	clnt := interceptor.NewClient(base, staleList())
 
-	reconciler := controller.NewJobReconciler(clnt)
+	reconciler := controller.NewJobReconciler(clnt, base)
 
 	_, err := reconciler.Reconcile(context.Background(), reconcile.Request{
 		NamespacedName: types.NamespacedName{Namespace: job.Namespace, Name: job.Name},

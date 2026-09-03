@@ -37,12 +37,18 @@ const jobOwnerKey = ".metadata.controller"
 // JobReconciler reconciles a Job object.
 type JobReconciler struct {
 	client client.Client
+	// apiReader reads directly from the API server, bypassing the cache
+	// client's informer. Used where a cache miss on a just-created object
+	// (not yet observed by the informer) must not be mistaken for the
+	// object's absence.
+	apiReader client.Reader
 }
 
 // NewJobReconciler returns a new JobReconciler.
-func NewJobReconciler(c client.Client) *JobReconciler {
+func NewJobReconciler(c client.Client, apiReader client.Reader) *JobReconciler {
 	return &JobReconciler{
-		client: c,
+		client:    c,
+		apiReader: apiReader,
 	}
 }
 
@@ -220,10 +226,14 @@ func (r *JobReconciler) createTaskWithOwner(ctx context.Context, job bmc.Job, ta
 	// alone doesn't prove that: the existing Task could be ownerless, or
 	// owned by an unrelated Job that reused this name before its own Task was
 	// garbage collected. Fetch it and confirm this Job is its controller
-	// before accepting the conflict as success; otherwise report it as a
-	// genuine error so the Job is retried rather than silently stalling.
+	// before accepting the conflict as success; otherwise mark the Job
+	// Failed rather than silently stalling.
+	//
+	// Read via apiReader, not the cache client: the cache that missed this
+	// Task in the owned-Task List above would just as likely miss it here
+	// too, since both read from the same informer store.
 	existing := &bmc.Task{}
-	if getErr := r.client.Get(ctx, client.ObjectKeyFromObject(task), existing); getErr != nil {
+	if getErr := r.apiReader.Get(ctx, client.ObjectKeyFromObject(task), existing); getErr != nil {
 		return fmt.Errorf("failed to get existing Task %s/%s: %w", task.Namespace, task.Name, getErr)
 	}
 
