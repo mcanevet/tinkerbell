@@ -39,17 +39,17 @@ func TestJobReconcile(t *testing.T) {
 		"success taskless job": {
 			machine: createMachine(),
 			secret:  createSecret(),
-			job:     createJob("test", createMachine()),
+			job:     createJob(createMachine()),
 		},
 		"failure unknown machine": {
 			machine: &bmc.Machine{},
 			secret:  createSecret(),
-			job:     createJob("test", createMachine()), shouldErr: true,
+			job:     createJob(createMachine()), shouldErr: true,
 		},
 		"success power on job": {
 			machine: createMachine(),
 			secret:  createSecret(),
-			job:     createJob("test", createMachine(), getAction("PowerOn")),
+			job:     createJob(createMachine(), getAction("PowerOn")),
 			testAll: true,
 		},
 	}
@@ -139,7 +139,7 @@ func TestJobReconcile(t *testing.T) {
 	}
 }
 
-func createJob(name string, machine *bmc.Machine, t ...bmc.Action) *bmc.Job {
+func createJob(machine *bmc.Machine, t ...bmc.Action) *bmc.Job {
 	tasks := []bmc.Action{}
 	if len(t) > 0 {
 		tasks = t
@@ -151,7 +151,7 @@ func createJob(name string, machine *bmc.Machine, t ...bmc.Action) *bmc.Job {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
-			Name:      name,
+			Name:      "test",
 		},
 		Spec: bmc.JobSpec{
 			MachineRef: bmc.MachineRef{Name: machine.Name, Namespace: machine.Namespace},
@@ -175,7 +175,7 @@ func createJob(name string, machine *bmc.Machine, t ...bmc.Action) *bmc.Job {
 func TestJobReconcileTaskAlreadyExists(t *testing.T) {
 	machine := createMachine()
 	secret := createSecret()
-	job := createJob("test", createMachine(), getAction("PowerOn"))
+	job := createJob(createMachine(), getAction("PowerOn"))
 	job.UID = "job-uid"
 
 	isController := true
@@ -236,7 +236,7 @@ func TestJobReconcileTaskAlreadyExists(t *testing.T) {
 func TestJobReconcileTaskAlreadyExistsForeignOwner(t *testing.T) {
 	machine := createMachine()
 	secret := createSecret()
-	job := createJob("test", createMachine(), getAction("PowerOn"))
+	job := createJob(createMachine(), getAction("PowerOn"))
 	job.UID = "current-job-uid"
 
 	isController := true
