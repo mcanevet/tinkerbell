@@ -205,15 +205,30 @@ func (r *JobReconciler) createTaskWithOwner(ctx context.Context, job bmc.Job, ta
 		},
 	}
 
-	// A Task name is derived from the Job name and the task index, so an
-	// AlreadyExists here means a previous reconcile of this same Job already
-	// created it. That is the desired state, not a failure - returning an error
-	// marks the Job, and with it the Workflow, as failed even though the Task
-	// exists and may already have completed. Reconciles are requeued routinely,
-	// and the race is easy to hit when many Jobs are created at once.
 	err := r.client.Create(ctx, task)
-	if err != nil && !apierrors.IsAlreadyExists(err) {
+	if err == nil {
+		return nil
+	}
+
+	if !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed to create Task %s/%s: %w", task.Namespace, task.Name, err)
+	}
+
+	// A Task name is derived from the Job name and the task index, so an
+	// AlreadyExists here usually means a previous reconcile of this same Job
+	// already created it - the desired state, not a failure. But the name
+	// alone doesn't prove that: the existing Task could be ownerless, or
+	// owned by an unrelated Job that reused this name before its own Task was
+	// garbage collected. Fetch it and confirm this Job is its controller
+	// before accepting the conflict as success; otherwise report it as a
+	// genuine error so the Job is retried rather than silently stalling.
+	existing := &bmc.Task{}
+	if getErr := r.client.Get(ctx, client.ObjectKeyFromObject(task), existing); getErr != nil {
+		return fmt.Errorf("failed to get existing Task %s/%s: %w", task.Namespace, task.Name, getErr)
+	}
+
+	if owner := metav1.GetControllerOf(existing); owner == nil || owner.UID != job.UID {
+		return fmt.Errorf("task %s/%s already exists and is not owned by Job %s/%s", task.Namespace, task.Name, job.Namespace, job.Name)
 	}
 
 	return nil
