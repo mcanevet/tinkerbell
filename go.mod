@@ -294,9 +294,11 @@ require (
 )
 
 replace (
-	// TODO: drop once github.com/bmc-toolbox/bmclib/v2#feat/http-boot-uri merges upstream, and
-	// bump the require above to the resulting bmc-toolbox/bmclib commit directly.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260907121340-1bba864129b6
+	// TODO: drop once bmc-toolbox/bmclib#feat/http-boot-uri and #feat/network-boot-enabled merge
+	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit directly.
+	// This pin points at mcanevet/bmclib's tink-staging, a local integration branch merging both
+	// (independent, separately opened) PR branches - not something to open a PR from itself.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260907124225-f383a07235fb
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.3
