@@ -165,40 +165,34 @@ func TestTaskReconcile(t *testing.T) {
 		"success http boot enabled": {
 			taskName: "HTTPBootEnabled",
 			action:   getAction("HTTPBootEnabled"),
-			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}},
+			provider: &testProvider{NetworkBootEnabledOK: true},
 		},
 		"success http boot disabled": {
 			taskName: "HTTPBootDisabled",
 			action:   getAction("HTTPBootDisabled"),
-			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Enabled"}},
+			provider: &testProvider{NetworkBootEnabledOK: true},
 		},
-		"failure on http boot get bios configuration": {
+		"failure on http boot set network boot enabled error": {
 			taskName:  "HTTPBootEnabled",
 			action:    getAction("HTTPBootEnabled"),
-			provider:  &testProvider{ErrBiosConfigGet: errors.New("failed to get bios configuration")},
+			provider:  &testProvider{ErrSetNetworkBootEnabled: errors.New("failed to set network boot enabled state")},
 			shouldErr: true,
 		},
-		"failure on http boot unknown bios fingerprint": {
+		"failure on http boot set network boot enabled not ok": {
 			taskName:  "HTTPBootEnabled",
 			action:    getAction("HTTPBootEnabled"),
-			provider:  &testProvider{BiosConfig: map[string]string{"SomeOtherAttribute": "value"}},
-			shouldErr: true,
-		},
-		"failure on http boot set bios configuration": {
-			taskName:  "HTTPBootEnabled",
-			action:    getAction("HTTPBootEnabled"),
-			provider:  &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}, ErrBiosConfigSet: errors.New("failed to set bios configuration")},
+			provider:  &testProvider{NetworkBootEnabledOK: false},
 			shouldErr: true,
 		},
 		"success pxe boot enabled": {
 			taskName: "PXEBootEnabled",
 			action:   getAction("PXEBootEnabled"),
-			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Enabled"}},
+			provider: &testProvider{NetworkBootEnabledOK: true},
 		},
 		"success http and pxe boot both enabled": {
 			taskName: "HTTPAndPXEBootEnabled",
 			action:   getAction("HTTPAndPXEBootEnabled"),
-			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}},
+			provider: &testProvider{NetworkBootEnabledOK: true},
 		},
 		"success http boot url": {
 			taskName: "HTTPBootURL",
@@ -208,7 +202,7 @@ func TestTaskReconcile(t *testing.T) {
 		"success http boot enabled and url set together": {
 			taskName: "HTTPBootEnabledAndURL",
 			action:   getAction("HTTPBootEnabledAndURL"),
-			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}, HTTPBootURIOK: true},
+			provider: &testProvider{NetworkBootEnabledOK: true, HTTPBootURIOK: true},
 		},
 		"failure on http boot url set error": {
 			taskName:  "HTTPBootURL",

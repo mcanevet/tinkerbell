@@ -114,14 +114,11 @@ type testProvider struct {
 	ErrInventory    error
 	InventoryCalls  int
 
-	// BiosConfig, ErrBiosConfigGet, and ErrBiosConfigSet control the
-	// GetBiosConfiguration/SetBiosConfiguration implementations below, used to test
-	// HTTPBootEnabled without a live BMC. SetBiosConfigCalls records every map passed to
-	// SetBiosConfiguration, so tests can assert on the resolved attributes.
-	BiosConfig         map[string]string
-	ErrBiosConfigGet   error
-	ErrBiosConfigSet   error
-	SetBiosConfigCalls []map[string]string
+	// NetworkBootEnabledOK and ErrSetNetworkBootEnabled control the
+	// SetNetworkBootEnabled implementation below, used to test HTTPBootEnabled/PXEBootEnabled
+	// without a live BMC.
+	NetworkBootEnabledOK     bool
+	ErrSetNetworkBootEnabled error
 
 	// HTTPBootURIOK, ErrHTTPBootURISet, and SetHTTPBootURICalls control the
 	// SetHTTPBootURI implementation below, used to test HTTPBootURL without a
@@ -153,6 +150,7 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureVirtualMedia,
 		providers.FeatureInventoryRead,
 		providers.FeatureSetHTTPBootURI,
+		providers.FeatureSetNetworkBootEnabled,
 	}
 }
 
@@ -188,13 +186,8 @@ func (t *testProvider) SetVirtualMedia(_ context.Context, _ string, _ string) (o
 	return t.VirtualMediaOK, t.ErrVirtualMediaInsert
 }
 
-func (t *testProvider) GetBiosConfiguration(_ context.Context) (map[string]string, error) {
-	return t.BiosConfig, t.ErrBiosConfigGet
-}
-
-func (t *testProvider) SetBiosConfiguration(_ context.Context, biosConfig map[string]string) error {
-	t.SetBiosConfigCalls = append(t.SetBiosConfigCalls, biosConfig)
-	return t.ErrBiosConfigSet
+func (t *testProvider) SetNetworkBootEnabled(_ context.Context, _, _ *bool) (ok bool, err error) {
+	return t.NetworkBootEnabledOK, t.ErrSetNetworkBootEnabled
 }
 
 func (t *testProvider) SetHTTPBootURI(_ context.Context, uri string) (ok bool, err error) {

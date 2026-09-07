@@ -91,8 +91,8 @@ spec:
                     networkBootConfig:
                       description: |-
                         NetworkBootConfig enables/disables network boot protocol capabilities (UEFI HTTP Boot,
-                        legacy PXE) in BIOS/UEFI firmware. Currently supported on Supermicro/AMI Aptio hardware
-                        only — see internal/netboot.
+                        legacy PXE) in BIOS/UEFI firmware, and/or sets the URL UEFI HTTP Boot fetches its boot
+                        image from. Support for the specific BMC vendor is implemented in bmclib.
                       minProperties: 1
                       properties:
                         httpBootEnabled:

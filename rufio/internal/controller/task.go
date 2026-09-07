@@ -22,7 +22,6 @@ import (
 	bmclib "github.com/bmc-toolbox/bmclib/v2"
 	"github.com/go-logr/logr"
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
-	"github.com/tinkerbell/tinkerbell/rufio/internal/netboot"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
@@ -250,9 +249,15 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 
 	if task.NetworkBootConfig != nil {
 		if task.NetworkBootConfig.HTTPBootEnabled != nil || task.NetworkBootConfig.PXEBootEnabled != nil {
-			if err := r.setNetworkBootEnabled(ctx, logger, task.NetworkBootConfig, bmcClient); err != nil {
-				return err
+			ok, err := bmcClient.SetNetworkBootEnabled(ctx, task.NetworkBootConfig.HTTPBootEnabled, task.NetworkBootConfig.PXEBootEnabled)
+			if err != nil || !ok {
+				return fmt.Errorf("failed to set network boot enabled state, ok: %v, err: %w", ok, err)
 			}
+			md := bmcClient.GetMetadata()
+			logger.Info("network boot enabled state set successfully",
+				"httpBootEnabled", boolPtrValue(task.NetworkBootConfig.HTTPBootEnabled),
+				"pxeBootEnabled", boolPtrValue(task.NetworkBootConfig.PXEBootEnabled),
+				"providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
 		}
 
 		if task.NetworkBootConfig.HTTPBootURL != nil {
@@ -270,29 +275,6 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 	logger.Info("no action specified in Task, nothing to do", "task", task)
 
 	return errors.New("no action specified in Task, nothing to do")
-}
-
-// setNetworkBootEnabled resolves and applies the BIOS attributes for the requested HTTP/PXE
-// network boot enabled state.
-func (r *TaskReconciler) setNetworkBootEnabled(ctx context.Context, logger logr.Logger, cfg *bmc.NetworkBootConfig, bmcClient *bmclib.Client) error {
-	current, err := bmcClient.GetBiosConfiguration(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to read current BIOS configuration: %w", err)
-	}
-	attrs, err := netboot.Attributes(cfg.HTTPBootEnabled, cfg.PXEBootEnabled, current)
-	if err != nil {
-		return fmt.Errorf("failed to resolve network boot attributes: %w", err)
-	}
-	if err := bmcClient.SetBiosConfiguration(ctx, attrs); err != nil {
-		return fmt.Errorf("failed to set network boot enabled state: %w", err)
-	}
-	md := bmcClient.GetMetadata()
-	logger.Info("network boot enabled state set successfully",
-		"httpBootEnabled", boolPtrValue(cfg.HTTPBootEnabled),
-		"pxeBootEnabled", boolPtrValue(cfg.PXEBootEnabled),
-		"providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
-
-	return nil
 }
 
 // boolPtrValue returns the pointed-to value for logging, or nil if b is nil, so log lines show
