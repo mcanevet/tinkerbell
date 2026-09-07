@@ -128,6 +128,13 @@ spec:
                                     HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
                                     IPv6 both.
                                   type: boolean
+                                httpBootURL:
+                                  description: |-
+                                    HTTPBootURL sets the URL UEFI HTTP Boot fetches its boot image from, via the standard
+                                    Redfish ComputerSystem.Boot.HttpBootUri property. Independent of HTTPBootEnabled: setting
+                                    the URL does not enable the capability, and enabling the capability does not require a URL.
+                                  format: uri
+                                  type: string
                                 pxeBootEnabled:
                                   description: PXEBootEnabled enables (true) or disables
                                     (false) legacy PXE boot capability.
@@ -225,6 +232,13 @@ spec:
                                     HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
                                     IPv6 both.
                                   type: boolean
+                                httpBootURL:
+                                  description: |-
+                                    HTTPBootURL sets the URL UEFI HTTP Boot fetches its boot image from, via the standard
+                                    Redfish ComputerSystem.Boot.HttpBootUri property. Independent of HTTPBootEnabled: setting
+                                    the URL does not enable the capability, and enabling the capability does not require a URL.
+                                  format: uri
+                                  type: string
                                 pxeBootEnabled:
                                   description: PXEBootEnabled enables (true) or disables
                                     (false) legacy PXE boot capability.

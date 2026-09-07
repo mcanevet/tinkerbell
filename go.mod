@@ -294,6 +294,9 @@ require (
 )
 
 replace (
+	// TODO: drop once github.com/bmc-toolbox/bmclib/v2#feat/http-boot-uri merges upstream, and
+	// bump the require above to the resulting bmc-toolbox/bmclib commit directly.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260907063738-23151329f1da
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.3

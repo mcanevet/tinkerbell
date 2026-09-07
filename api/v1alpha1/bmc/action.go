@@ -60,10 +60,11 @@ type BootDeviceConfig struct {
 }
 
 // NetworkBootConfig represents the configuration for enabling/disabling network boot protocol
-// capabilities (UEFI HTTP Boot, legacy PXE) in BIOS/UEFI firmware. Unlike BootDevice (which
-// selects among existing boot options), this creates or removes the boot options themselves.
-// HTTPBootEnabled and PXEBootEnabled are independent — either, both, or neither protocol may be
-// enabled at once; a nil field leaves that protocol's BIOS attributes untouched.
+// capabilities (UEFI HTTP Boot, legacy PXE) in BIOS/UEFI firmware, and for pointing UEFI HTTP
+// Boot at a boot image URL. Unlike BootDevice (which selects among existing boot options), this
+// creates or removes the boot options themselves. HTTPBootEnabled, PXEBootEnabled, and
+// HTTPBootURL are independent — any combination may be set at once; a nil field leaves that
+// setting untouched.
 // +kubebuilder:validation:MinProperties:=1
 type NetworkBootConfig struct {
 	// HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
@@ -72,6 +73,12 @@ type NetworkBootConfig struct {
 
 	// PXEBootEnabled enables (true) or disables (false) legacy PXE boot capability.
 	PXEBootEnabled *bool `json:"pxeBootEnabled,omitempty"`
+
+	// HTTPBootURL sets the URL UEFI HTTP Boot fetches its boot image from, via the standard
+	// Redfish ComputerSystem.Boot.HttpBootUri property. Independent of HTTPBootEnabled: setting
+	// the URL does not enable the capability, and enabling the capability does not require a URL.
+	// +kubebuilder:validation:Format=uri
+	HTTPBootURL *string `json:"httpBootURL,omitempty"`
 }
 
 func (b BootDevice) String() string {

@@ -122,6 +122,13 @@ type testProvider struct {
 	ErrBiosConfigGet   error
 	ErrBiosConfigSet   error
 	SetBiosConfigCalls []map[string]string
+
+	// HTTPBootURIOK, ErrHTTPBootURISet, and SetHTTPBootURICalls control the
+	// SetHTTPBootURI implementation below, used to test HTTPBootURL without a
+	// live BMC.
+	HTTPBootURIOK       bool
+	ErrHTTPBootURISet   error
+	SetHTTPBootURICalls []string
 }
 
 func (t *testProvider) Name() string {
@@ -145,6 +152,7 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureBootDeviceSet,
 		providers.FeatureVirtualMedia,
 		providers.FeatureInventoryRead,
+		providers.FeatureSetHTTPBootURI,
 	}
 }
 
@@ -187,6 +195,11 @@ func (t *testProvider) GetBiosConfiguration(_ context.Context) (map[string]strin
 func (t *testProvider) SetBiosConfiguration(_ context.Context, biosConfig map[string]string) error {
 	t.SetBiosConfigCalls = append(t.SetBiosConfigCalls, biosConfig)
 	return t.ErrBiosConfigSet
+}
+
+func (t *testProvider) SetHTTPBootURI(_ context.Context, uri string) (ok bool, err error) {
+	t.SetHTTPBootURICalls = append(t.SetHTTPBootURICalls, uri)
+	return t.HTTPBootURIOK, t.ErrHTTPBootURISet
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.

@@ -40,6 +40,10 @@ func getAction(s string) bmc.Action {
 		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{PXEBootEnabled: toPtr(true)}}
 	case "HTTPAndPXEBootEnabled":
 		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootEnabled: toPtr(true), PXEBootEnabled: toPtr(true)}}
+	case "HTTPBootURL":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootURL: toPtr("http://example.com/boot.efi")}}
+	case "HTTPBootEnabledAndURL":
+		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootEnabled: toPtr(true), HTTPBootURL: toPtr("http://example.com/boot.efi")}}
 	default:
 		return bmc.Action{}
 	}
@@ -195,6 +199,28 @@ func TestTaskReconcile(t *testing.T) {
 			taskName: "HTTPAndPXEBootEnabled",
 			action:   getAction("HTTPAndPXEBootEnabled"),
 			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}},
+		},
+		"success http boot url": {
+			taskName: "HTTPBootURL",
+			action:   getAction("HTTPBootURL"),
+			provider: &testProvider{HTTPBootURIOK: true},
+		},
+		"success http boot enabled and url set together": {
+			taskName: "HTTPBootEnabledAndURL",
+			action:   getAction("HTTPBootEnabledAndURL"),
+			provider: &testProvider{BiosConfig: map[string]string{"IPv4HTTPSupport": "Disabled"}, HTTPBootURIOK: true},
+		},
+		"failure on http boot url set error": {
+			taskName:  "HTTPBootURL",
+			action:    getAction("HTTPBootURL"),
+			provider:  &testProvider{ErrHTTPBootURISet: errors.New("failed to set http boot uri")},
+			shouldErr: true,
+		},
+		"failure on http boot url set not ok": {
+			taskName:  "HTTPBootURL",
+			action:    getAction("HTTPBootURL"),
+			provider:  &testProvider{HTTPBootURIOK: false},
+			shouldErr: true,
 		},
 	}
 
