@@ -132,6 +132,19 @@ type testProvider struct {
 	InventoryDevice *common.Device
 	ErrInventory    error
 	InventoryCalls  int
+
+	// NetworkBootEnabledOK and ErrSetNetworkBootEnabled control the
+	// SetNetworkBootEnabled implementation below, used to test HTTPBootEnabled/PXEBootEnabled
+	// without a live BMC.
+	NetworkBootEnabledOK     bool
+	ErrSetNetworkBootEnabled error
+
+	// HTTPBootURIOK, ErrHTTPBootURISet, and SetHTTPBootURICalls control the
+	// SetHTTPBootURI implementation below, used to test HTTPBootURL without a
+	// live BMC.
+	HTTPBootURIOK       bool
+	ErrHTTPBootURISet   error
+	SetHTTPBootURICalls []string
 }
 
 func (t *testProvider) Name() string {
@@ -160,6 +173,8 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureResetSecureBootKeys,
 		providers.FeatureResetSecureBootDatabaseKeys,
 		providers.FeatureImportSecureBootCertificate,
+		providers.FeatureSetHTTPBootURI,
+		providers.FeatureSetNetworkBootEnabled,
 	}
 }
 
@@ -219,6 +234,15 @@ func (t *testProvider) ResetSecureBootDatabaseKeys(_ context.Context, database b
 func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database bmclibbmc.SecureBootDatabase, certificatePEM string) error {
 	t.ImportSecureBootCertificateCalledWith = [2]string{string(database), certificatePEM}
 	return t.ErrImportSecureBootCertificate
+}
+
+func (t *testProvider) SetNetworkBootEnabled(_ context.Context, _, _ *bool) (ok bool, err error) {
+	return t.NetworkBootEnabledOK, t.ErrSetNetworkBootEnabled
+}
+
+func (t *testProvider) SetHTTPBootURI(_ context.Context, uri string) (ok bool, err error) {
+	t.SetHTTPBootURICalls = append(t.SetHTTPBootURICalls, uri)
+	return t.HTTPBootURIOK, t.ErrHTTPBootURISet
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.

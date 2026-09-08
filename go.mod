@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/a-h/templ v0.3.1020
 	github.com/avast/retry-go/v4 v4.7.0
-	github.com/bmc-toolbox/bmclib/v2 v2.3.6-0.20260903060602-059bb47b5bfc
+	github.com/bmc-toolbox/bmclib/v2 v2.3.6-0.20260904070141-3cf021d36375
 	github.com/bmc-toolbox/common v0.0.1
 	github.com/ccoveille/go-safecast/v2 v2.0.1
 	github.com/cenkalti/backoff/v5 v5.0.3
@@ -301,6 +301,11 @@ require (
 )
 
 replace (
+	// TODO: drop once bmc-toolbox/bmclib#feat/http-boot-uri and #feat/network-boot-enabled merge
+	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit directly.
+	// This pin points at mcanevet/bmclib's tink-staging, a local integration branch merging both
+	// (independent, separately opened) PR branches - not something to open a PR from itself.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260908053525-61f76f436905
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4

@@ -264,6 +264,31 @@ This configuration will:
 
 `secureBootDatabaseResetKeysAction`'s `resetType` accepts only `ResetAllKeysToDefault` or `DeleteAllKeys` - `DeletePK` isn't offered, since PK isn't addressable at the per-database granularity (use `secureBootResetKeys` for that). `certificatePEMConfigMapRef` points at a PEM-encoded certificate rather than inlining it in the Action, since a certificate is typically too large - and too reused across Workflows - to duplicate everywhere it's needed.
 
+#### Example: Enabling UEFI HTTP Boot with customboot
+
+The `networkBootConfig` action enables/disables UEFI HTTP Boot and/or legacy PXE boot capability in BIOS/UEFI firmware, and can set the URL UEFI HTTP Boot fetches its boot image from. Unlike `bootDevice` (which selects among existing boot options), `networkBootConfig` creates or removes the boot options themselves - useful when a Machine's firmware doesn't have UEFI HTTP Boot enabled by default.
+
+```yaml
+apiVersion: "tinkerbell.org/v1alpha1"
+kind: Workflow
+metadata:
+  name: example-http-boot
+spec:
+  templateRef: example
+  hardwareRef: example
+  bootOptions:
+    bootMode: customboot
+    custombootConfig:
+      preparingActions:
+      - powerAction: "off"
+      - networkBootConfig:
+          httpBootEnabled: true
+          httpBootURL: 'http://172.17.1.1:7080/ipxe/{{ (index .Hardware.Interfaces 0).DHCP.MAC }}/ipxe'
+      - powerAction: "on"
+```
+
+`httpBootEnabled`, `pxeBootEnabled`, and `httpBootURL` are independent - any combination may be set at once, and a field left unset leaves that setting untouched. Support for this action depends on the BMC's provider implementing it in [bmclib](https://github.com/bmc-toolbox/bmclib).
+
 ### Templating in customboot
 
 The `customboot` mode supports Go template syntax in action fields, enabling dynamic configuration based on Hardware specifications. This is particularly useful for virtual media URLs that need to include the Machine's MAC address.

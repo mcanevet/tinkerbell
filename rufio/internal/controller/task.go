@@ -293,9 +293,43 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 		return nil
 	}
 
+	if task.NetworkBootConfig != nil {
+		if task.NetworkBootConfig.HTTPBootEnabled != nil || task.NetworkBootConfig.PXEBootEnabled != nil {
+			ok, err := bmcClient.SetNetworkBootEnabled(ctx, task.NetworkBootConfig.HTTPBootEnabled, task.NetworkBootConfig.PXEBootEnabled)
+			if err != nil || !ok {
+				return fmt.Errorf("failed to set network boot enabled state, ok: %v, err: %w", ok, err)
+			}
+			md := bmcClient.GetMetadata()
+			logger.Info("network boot enabled state set successfully",
+				"httpBootEnabled", boolPtrValue(task.NetworkBootConfig.HTTPBootEnabled),
+				"pxeBootEnabled", boolPtrValue(task.NetworkBootConfig.PXEBootEnabled),
+				"providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
+		}
+
+		if task.NetworkBootConfig.HTTPBootURL != nil {
+			ok, err := bmcClient.SetHTTPBootURI(ctx, *task.NetworkBootConfig.HTTPBootURL)
+			if err != nil || !ok {
+				return fmt.Errorf("failed to set HTTP boot URL, ok: %v, err: %w", ok, err)
+			}
+			md := bmcClient.GetMetadata()
+			logger.Info("http boot url set successfully", "providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider, "ok", ok)
+		}
+
+		return nil
+	}
+
 	logger.Info("no action specified in Task, nothing to do", "task", task)
 
 	return errors.New("no action specified in Task, nothing to do")
+}
+
+// boolPtrValue returns the pointed-to value for logging, or nil if b is nil, so log lines show
+// "true"/"false"/"<nil>" instead of a pointer address.
+func boolPtrValue(b *bool) any {
+	if b == nil {
+		return nil
+	}
+	return *b
 }
 
 // checkTaskStatus checks if Task action completed.
