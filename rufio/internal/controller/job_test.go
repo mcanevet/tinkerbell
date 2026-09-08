@@ -232,10 +232,11 @@ func TestJobReconcileTaskAlreadyExists(t *testing.T) {
 // guard exercised by TestJobReconcileTaskAlreadyExists does not paper over a
 // genuine conflict: a Task with the name this Job would create, but owned by
 // a different Job instance (e.g. a previous Job with the same name whose
-// Task wasn't garbage collected yet). Silently treating that as success would
-// leave this Job's own Task never created, and nothing would ever re-enqueue
-// it since neither the owner watch nor the name-keyed Task index recognize
-// the foreign Task as unrelated.
+// Task wasn't garbage collected yet - tink/controller's Workflow state
+// machine reuses fixed names like "netboot" for Jobs). Silently treating
+// that as success would leave this Job's own Task never created, and
+// nothing would ever re-enqueue it since neither the owner watch nor the
+// UID-keyed Task index recognize the foreign Task as unrelated.
 func TestJobReconcileTaskAlreadyExistsForeignOwner(t *testing.T) {
 	machine := createMachine()
 	secret := createSecret()
