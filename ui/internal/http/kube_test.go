@@ -357,6 +357,15 @@ func TestBmcTaskType(t *testing.T) {
 			},
 			want: "VirtualMedia",
 		},
+		{
+			name: "SecureBootKeyManagement returns SecureBootKeyManagement",
+			action: bmcv1alpha1.Action{
+				SecureBootKeyManagement: &bmcv1alpha1.SecureBootKeyManagementAction{
+					Enable: true,
+				},
+			},
+			want: "SecureBootKeyManagement",
+		},
 	}
 
 	for _, tt := range tests {
