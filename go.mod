@@ -301,12 +301,13 @@ require (
 )
 
 replace (
-	// TODO: drop once bmc-toolbox/bmclib#feat/http-boot-uri, #feat/network-boot-enabled, and
-	// #secure-boot-key-management merge upstream, and bump the require above to the resulting
-	// bmc-toolbox/bmclib commit directly. This pin points at mcanevet/bmclib's tink-staging, a
-	// local integration branch merging all three (independent, separately opened) PR branches -
-	// not something to open a PR from itself.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260909141630-a59411cfdd6e
+	// TODO: drop once bmc-toolbox/bmclib#feat/http-boot-uri, #feat/network-boot-enabled,
+	// #secure-boot-key-management, and #fix/redfish-preserve-http-client-timeout merge
+	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit
+	// directly. This pin points at mcanevet/bmclib's tink-staging, a local integration branch
+	// merging all four (independent, separately opened) PR branches - not something to open a
+	// PR from itself.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260909170701-24a36fdef3c5
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4
