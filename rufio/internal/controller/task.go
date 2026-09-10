@@ -294,26 +294,22 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 	}
 
 	if task.NetworkBootConfig != nil {
-		if task.NetworkBootConfig.HTTPBootEnabled != nil || task.NetworkBootConfig.PXEBootEnabled != nil {
-			ok, err := bmcClient.SetNetworkBootEnabled(ctx, task.NetworkBootConfig.HTTPBootEnabled, task.NetworkBootConfig.PXEBootEnabled)
-			if err != nil || !ok {
-				return fmt.Errorf("failed to set network boot enabled state, ok: %v, err: %w", ok, err)
-			}
-			md := bmcClient.GetMetadata()
-			logger.Info("network boot enabled state set successfully",
-				"httpBootEnabled", boolPtrValue(task.NetworkBootConfig.HTTPBootEnabled),
-				"pxeBootEnabled", boolPtrValue(task.NetworkBootConfig.PXEBootEnabled),
-				"providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
+		// A single combined call, not one per field: on Dell, HTTPBootEnabled/PXEBootEnabled and
+		// HTTPBootURL are both staged BIOS Setup attributes applied on next reset, and the iDRAC
+		// only allows one uncommitted config job at a time. Two separate calls made the second
+		// one fail with "Pending configuration values are already committed" (confirmed live on
+		// a PowerEdge R6715). bmclib's SetNetworkBootConfig batches them into one BMC operation
+		// where the provider supports it, and falls back to the old separate calls otherwise.
+		ok, err := bmcClient.SetNetworkBootConfig(ctx, task.NetworkBootConfig.HTTPBootEnabled, task.NetworkBootConfig.PXEBootEnabled, task.NetworkBootConfig.HTTPBootURL)
+		if err != nil || !ok {
+			return fmt.Errorf("failed to set network boot config, ok: %v, err: %w", ok, err)
 		}
-
-		if task.NetworkBootConfig.HTTPBootURL != nil {
-			ok, err := bmcClient.SetHTTPBootURI(ctx, *task.NetworkBootConfig.HTTPBootURL)
-			if err != nil || !ok {
-				return fmt.Errorf("failed to set HTTP boot URL, ok: %v, err: %w", ok, err)
-			}
-			md := bmcClient.GetMetadata()
-			logger.Info("http boot url set successfully", "providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider, "ok", ok)
-		}
+		md := bmcClient.GetMetadata()
+		logger.Info("network boot config set successfully",
+			"httpBootEnabled", boolPtrValue(task.NetworkBootConfig.HTTPBootEnabled),
+			"pxeBootEnabled", boolPtrValue(task.NetworkBootConfig.PXEBootEnabled),
+			"httpBootURL", stringPtrValue(task.NetworkBootConfig.HTTPBootURL),
+			"providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
 
 		return nil
 	}
@@ -341,6 +337,15 @@ func boolPtrValue(b *bool) any {
 		return nil
 	}
 	return *b
+}
+
+// stringPtrValue returns the pointed-to value for logging, or nil if s is nil, so log lines show
+// the string/"<nil>" instead of a pointer address.
+func stringPtrValue(s *string) any {
+	if s == nil {
+		return nil
+	}
+	return *s
 }
 
 // checkTaskStatus checks if Task action completed.
