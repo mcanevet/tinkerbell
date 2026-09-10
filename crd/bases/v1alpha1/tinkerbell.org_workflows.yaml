@@ -128,6 +128,16 @@ spec:
                                     HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
                                     IPv6 both.
                                   type: boolean
+                                httpBootTLSMode:
+                                  description: |-
+                                    HTTPBootTLSMode sets the TLS authentication mode UEFI HTTP Boot uses to connect to the HTTP
+                                    boot server: "None" allows fetching the boot image over plain HTTP, "OneWay" requires HTTPS
+                                    with the server authenticated by the client. Some hardware defaults to "OneWay", which
+                                    rejects an HTTPBootURL that isn't HTTPS. Independent of HTTPBootEnabled and HTTPBootURL.
+                                  enum:
+                                  - None
+                                  - OneWay
+                                  type: string
                                 httpBootURL:
                                   description: |-
                                     HTTPBootURL sets the URL UEFI HTTP Boot fetches its boot image from, via the standard
@@ -232,6 +242,16 @@ spec:
                                     HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
                                     IPv6 both.
                                   type: boolean
+                                httpBootTLSMode:
+                                  description: |-
+                                    HTTPBootTLSMode sets the TLS authentication mode UEFI HTTP Boot uses to connect to the HTTP
+                                    boot server: "None" allows fetching the boot image over plain HTTP, "OneWay" requires HTTPS
+                                    with the server authenticated by the client. Some hardware defaults to "OneWay", which
+                                    rejects an HTTPBootURL that isn't HTTPS. Independent of HTTPBootEnabled and HTTPBootURL.
+                                  enum:
+                                  - None
+                                  - OneWay
+                                  type: string
                                 httpBootURL:
                                   description: |-
                                     HTTPBootURL sets the URL UEFI HTTP Boot fetches its boot image from, via the standard

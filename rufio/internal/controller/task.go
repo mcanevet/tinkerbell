@@ -20,6 +20,7 @@ import (
 	"time"
 
 	bmclib "github.com/bmc-toolbox/bmclib/v2"
+	bmclibbmc "github.com/bmc-toolbox/bmclib/v2/bmc"
 	"github.com/go-logr/logr"
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -267,6 +268,15 @@ func (r *TaskReconciler) runTask(ctx context.Context, logger logr.Logger, task b
 			}
 			md := bmcClient.GetMetadata()
 			logger.Info("http boot url set successfully", "providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider, "ok", ok)
+		}
+
+		if task.NetworkBootConfig.HTTPBootTLSMode != nil {
+			ok, err := bmcClient.SetHTTPBootTLSMode(ctx, bmclibbmc.HTTPBootTLSMode(*task.NetworkBootConfig.HTTPBootTLSMode))
+			if err != nil || !ok {
+				return fmt.Errorf("failed to set HTTP boot TLS mode, ok: %v, err: %w", ok, err)
+			}
+			md := bmcClient.GetMetadata()
+			logger.Info("http boot tls mode set successfully", "httpBootTLSMode", *task.NetworkBootConfig.HTTPBootTLSMode, "providersAttempted", md.ProvidersAttempted, "successfulProvider", md.SuccessfulProvider)
 		}
 
 		return nil

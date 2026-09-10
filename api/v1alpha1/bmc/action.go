@@ -62,9 +62,9 @@ type BootDeviceConfig struct {
 // NetworkBootConfig represents the configuration for enabling/disabling network boot protocol
 // capabilities (UEFI HTTP Boot, legacy PXE) in BIOS/UEFI firmware, and for pointing UEFI HTTP
 // Boot at a boot image URL. Unlike BootDevice (which selects among existing boot options), this
-// creates or removes the boot options themselves. HTTPBootEnabled, PXEBootEnabled, and
-// HTTPBootURL are independent — any combination may be set at once; a nil field leaves that
-// setting untouched.
+// creates or removes the boot options themselves. HTTPBootEnabled, PXEBootEnabled, HTTPBootURL,
+// and HTTPBootTLSMode are independent — any combination may be set at once; a nil field leaves
+// that setting untouched.
 // +kubebuilder:validation:MinProperties:=1
 type NetworkBootConfig struct {
 	// HTTPBootEnabled enables (true) or disables (false) UEFI HTTP Boot capability, IPv4 and
@@ -79,6 +79,13 @@ type NetworkBootConfig struct {
 	// the URL does not enable the capability, and enabling the capability does not require a URL.
 	// +kubebuilder:validation:Format=uri
 	HTTPBootURL *string `json:"httpBootURL,omitempty"`
+
+	// HTTPBootTLSMode sets the TLS authentication mode UEFI HTTP Boot uses to connect to the HTTP
+	// boot server: "None" allows fetching the boot image over plain HTTP, "OneWay" requires HTTPS
+	// with the server authenticated by the client. Some hardware defaults to "OneWay", which
+	// rejects an HTTPBootURL that isn't HTTPS. Independent of HTTPBootEnabled and HTTPBootURL.
+	// +kubebuilder:validation:Enum=None;OneWay
+	HTTPBootTLSMode *string `json:"httpBootTLSMode,omitempty"`
 }
 
 func (b BootDevice) String() string {
