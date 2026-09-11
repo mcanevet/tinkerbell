@@ -64,6 +64,18 @@ type Action struct {
 	// legacy PXE) in BIOS/UEFI firmware, and/or sets the URL UEFI HTTP Boot fetches its boot
 	// image from. Support for the specific BMC vendor is implemented in bmclib.
 	NetworkBootConfig *NetworkBootConfig `json:"networkBootConfig,omitempty"`
+
+	// SecureBoot represents enabling or disabling UEFI Secure Boot.
+	SecureBoot *SecureBootAction `json:"secureBoot,omitempty"`
+
+	// SecureBootResetKeys represents resetting the UEFI Secure Boot key databases.
+	SecureBootResetKeys *SecureBootResetKeysAction `json:"secureBootResetKeys,omitempty"`
+
+	// SecureBootDatabaseResetKeys represents resetting a single UEFI Secure Boot key database.
+	SecureBootDatabaseResetKeys *SecureBootDatabaseResetKeysAction `json:"secureBootDatabaseResetKeys,omitempty"`
+
+	// SecureBootCertificateImport represents importing a certificate into a single UEFI Secure Boot key database.
+	SecureBootCertificateImport *SecureBootCertificateImportAction `json:"secureBootCertificateImport,omitempty"`
 }
 
 // TaskStatus defines the observed state of Task.

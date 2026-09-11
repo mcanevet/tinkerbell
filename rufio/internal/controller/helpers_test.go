@@ -4,6 +4,7 @@ import (
 	"context"
 
 	bmclib "github.com/bmc-toolbox/bmclib/v2"
+	bmclibbmc "github.com/bmc-toolbox/bmclib/v2/bmc"
 	"github.com/bmc-toolbox/bmclib/v2/providers"
 	common "github.com/bmc-toolbox/common"
 	"github.com/go-logr/logr"
@@ -92,18 +93,36 @@ func newClientBuilder() *fake.ClientBuilder {
 }
 
 type testProvider struct {
-	PName                 string
-	Proto                 string
-	Powerstate            string
-	PowerSetOK            bool
-	BootdeviceOK          bool
-	VirtualMediaOK        bool
-	ErrOpen               error
-	ErrClose              error
-	ErrPowerStateGet      error
-	ErrPowerStateSet      error
-	ErrBootDeviceSet      error
-	ErrVirtualMediaInsert error
+	PName                          string
+	Proto                          string
+	Powerstate                     string
+	PowerSetOK                     bool
+	BootdeviceOK                   bool
+	VirtualMediaOK                 bool
+	SecureBootEnabled              bool
+	ErrOpen                        error
+	ErrClose                       error
+	ErrPowerStateGet               error
+	ErrPowerStateSet               error
+	ErrBootDeviceSet               error
+	ErrVirtualMediaInsert          error
+	ErrGetSecureBoot               error
+	ErrSetSecureBoot               error
+	ErrResetSecureBootKeys         error
+	ErrResetSecureBootDatabaseKeys error
+	ErrImportSecureBootCertificate error
+
+	// ResetSecureBootKeysCalledWith records the resetType passed to the last
+	// ResetSecureBootKeys call, so tests can assert it was forwarded correctly.
+	ResetSecureBootKeysCalledWith string
+
+	// ResetSecureBootDatabaseKeysCalledWith records the database/resetType passed
+	// to the last ResetSecureBootDatabaseKeys call.
+	ResetSecureBootDatabaseKeysCalledWith [2]string
+
+	// ImportSecureBootCertificateCalledWith records the database/certificatePEM
+	// passed to the last ImportSecureBootCertificate call.
+	ImportSecureBootCertificateCalledWith [2]string
 
 	// InventoryDevice and ErrInventory control the Inventory() implementation
 	// below, used to test BMC inventory collection without a live BMC or a
@@ -151,6 +170,11 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureInventoryRead,
 		providers.FeatureSetHTTPBootURI,
 		providers.FeatureSetNetworkBootEnabled,
+		providers.FeatureGetSecureBoot,
+		providers.FeatureSetSecureBoot,
+		providers.FeatureResetSecureBootKeys,
+		providers.FeatureResetSecureBootDatabaseKeys,
+		providers.FeatureImportSecureBootCertificate,
 	}
 }
 
@@ -193,6 +217,32 @@ func (t *testProvider) SetNetworkBootEnabled(_ context.Context, _, _ *bool) (ok 
 func (t *testProvider) SetHTTPBootURI(_ context.Context, uri string) (ok bool, err error) {
 	t.SetHTTPBootURICalls = append(t.SetHTTPBootURICalls, uri)
 	return t.HTTPBootURIOK, t.ErrHTTPBootURISet
+}
+
+func (t *testProvider) GetSecureBoot(_ context.Context) (bool, error) {
+	return t.SecureBootEnabled, t.ErrGetSecureBoot
+}
+
+func (t *testProvider) SetSecureBoot(_ context.Context, enable bool) error {
+	if t.ErrSetSecureBoot == nil {
+		t.SecureBootEnabled = enable
+	}
+	return t.ErrSetSecureBoot
+}
+
+func (t *testProvider) ResetSecureBootKeys(_ context.Context, resetType bmclibbmc.ResetSecureBootKeysType) error {
+	t.ResetSecureBootKeysCalledWith = string(resetType)
+	return t.ErrResetSecureBootKeys
+}
+
+func (t *testProvider) ResetSecureBootDatabaseKeys(_ context.Context, database bmclibbmc.SecureBootDatabase, resetType bmclibbmc.ResetSecureBootDatabaseKeysType) error {
+	t.ResetSecureBootDatabaseKeysCalledWith = [2]string{string(database), string(resetType)}
+	return t.ErrResetSecureBootDatabaseKeys
+}
+
+func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database bmclibbmc.SecureBootDatabase, certificatePEM string) error {
+	t.ImportSecureBootCertificateCalledWith = [2]string{string(database), certificatePEM}
+	return t.ErrImportSecureBootCertificate
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.
