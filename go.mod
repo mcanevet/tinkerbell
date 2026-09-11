@@ -301,11 +301,12 @@ require (
 )
 
 replace (
-	// TODO: drop once bmc-toolbox/bmclib#464, #465, #466, #468, #469, #470, #471, and #472 merge
-	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit directly.
-	// This pin points at mcanevet/bmclib's tink-integration, a local integration branch merging
-	// all of those (independent, separately opened) PRs - not something to open a PR from itself.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911084411-546207b9597e
+	// TODO: drop once bmc-toolbox/bmclib#464, #465, #466, #467, #468, #469, #470, #471, and #472
+	// merge upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit
+	// directly. This pin points at mcanevet/bmclib's tink-integration, a local integration branch
+	// merging all of those (independent, separately opened) PRs - not something to open a PR from
+	// itself.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911151615-98497b90de68
 	// TODO: drop once stmcginnis/gofish#570 merges upstream and a release containing it lands, and
 	// let the mcanevet/bmclib pin above resolve gofish normally. bmclib's #468/#472 (bundled into
 	// tink-integration above) depend on Bios.UpdateBiosAttributesExactApplyAt, which only exists

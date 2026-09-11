@@ -351,8 +351,8 @@ github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911084411-546207b9597e h1:nz0eU5NxViH+UiYbSoTV55DsU/EpmMBkAKBdjAkIR4Y=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911084411-546207b9597e/go.mod h1:dsjjTQssNzv/vjHgF71w5KWDSrO1O13CysLAMgJrOgc=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911151615-98497b90de68 h1:L94X0IQDHhluEZsRYlaz9YFlheYoIfSR8Zzxk95EATE=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911151615-98497b90de68/go.mod h1:rejFt+V1BK1U0MYHe0wZOJlyJXRRCB6y9SVbfjlL9zc=
 github.com/mcanevet/gofish v0.25.1-0.20260910131025-c6f56923c825 h1:84gjnHqJgK7mI9Dbj0M8kaOgtLfmowMdxj815nngnXw=
 github.com/mcanevet/gofish v0.25.1-0.20260910131025-c6f56923c825/go.mod h1:PzF5i8ecRG9A2ol8XT64npKUunyraJ+7t0kYMpQAtqU=
 github.com/mdlayher/packet v1.1.2 h1:3Up1NG6LZrsgDVn6X4L9Ge/iyRyxFEFD9o6Pr3Q1nQY=
