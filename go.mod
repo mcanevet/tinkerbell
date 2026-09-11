@@ -301,11 +301,12 @@ require (
 )
 
 replace (
-	// TODO: drop once bmc-toolbox/bmclib#464 and #470 merge upstream, and bump the require above
-	// to the resulting bmc-toolbox/bmclib commit directly. This pin points at a scratch branch on
-	// mcanevet/bmclib merging just those two (independent, separately opened) PRs - not something
-	// to open a PR from itself.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911100241-29be9c5bd81e
+	// TODO: drop once bmc-toolbox/bmclib#464, #465, #466, #470, and #471 merge upstream, and bump
+	// the require above to the resulting bmc-toolbox/bmclib commit directly. This pin points at a
+	// scratch branch on mcanevet/bmclib merging those five (independent, separately opened) PRs -
+	// not something to open a PR from itself. #468/#472 are deliberately excluded: they depend on
+	// gofish#570, still under review upstream.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911115244-7bf842a19081
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4

@@ -351,8 +351,8 @@ github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911100241-29be9c5bd81e h1:iNv8ddt+HQn3vKmxoEsDmjjTzEc8aBPzZK+DTrboIDw=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911100241-29be9c5bd81e/go.mod h1:/q8JJH8NJtote6il3Fm1AkrEtsFc/k+oEV0V90SRXxs=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911115244-7bf842a19081 h1:9qDffxH7WglZ6V4v2LpiCTQb8pNV6rSbwOQ3res4sWQ=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911115244-7bf842a19081/go.mod h1:/q8JJH8NJtote6il3Fm1AkrEtsFc/k+oEV0V90SRXxs=
 github.com/mdlayher/packet v1.1.2 h1:3Up1NG6LZrsgDVn6X4L9Ge/iyRyxFEFD9o6Pr3Q1nQY=
 github.com/mdlayher/packet v1.1.2/go.mod h1:GEu1+n9sG5VtiRE4SydOmX5GTwyyYlteZiFU+x0kew4=
 github.com/mdlayher/socket v0.5.1 h1:VZaqt6RkGkt2OE9l3GcC6nZkqD3xKeQLyfleW/uBcos=
