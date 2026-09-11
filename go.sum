@@ -351,8 +351,10 @@ github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911115244-7bf842a19081 h1:9qDffxH7WglZ6V4v2LpiCTQb8pNV6rSbwOQ3res4sWQ=
-github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911115244-7bf842a19081/go.mod h1:/q8JJH8NJtote6il3Fm1AkrEtsFc/k+oEV0V90SRXxs=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911084411-546207b9597e h1:nz0eU5NxViH+UiYbSoTV55DsU/EpmMBkAKBdjAkIR4Y=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20260911084411-546207b9597e/go.mod h1:dsjjTQssNzv/vjHgF71w5KWDSrO1O13CysLAMgJrOgc=
+github.com/mcanevet/gofish v0.25.1-0.20260910131025-c6f56923c825 h1:84gjnHqJgK7mI9Dbj0M8kaOgtLfmowMdxj815nngnXw=
+github.com/mcanevet/gofish v0.25.1-0.20260910131025-c6f56923c825/go.mod h1:PzF5i8ecRG9A2ol8XT64npKUunyraJ+7t0kYMpQAtqU=
 github.com/mdlayher/packet v1.1.2 h1:3Up1NG6LZrsgDVn6X4L9Ge/iyRyxFEFD9o6Pr3Q1nQY=
 github.com/mdlayher/packet v1.1.2/go.mod h1:GEu1+n9sG5VtiRE4SydOmX5GTwyyYlteZiFU+x0kew4=
 github.com/mdlayher/socket v0.5.1 h1:VZaqt6RkGkt2OE9l3GcC6nZkqD3xKeQLyfleW/uBcos=
@@ -493,8 +495,6 @@ github.com/spf13/cobra v1.10.2/go.mod h1:7C1pvHqHw5A4vrJfjNwvOdzYu0Gml16OCs2GRiT
 github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
 github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
-github.com/stmcginnis/gofish v0.24.1-0.20260826144359-aa6a0d77e479 h1:FuKSjxinf+dN6TrYWzB6YsIJZdCQGU5KwFhmhHGfDSM=
-github.com/stmcginnis/gofish v0.24.1-0.20260826144359-aa6a0d77e479/go.mod h1:PzF5i8ecRG9A2ol8XT64npKUunyraJ+7t0kYMpQAtqU=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=
