@@ -306,7 +306,7 @@ replace (
 	// directly. This pin points at mcanevet/bmclib's tink-integration, a local integration branch
 	// merging all of those (independent, separately opened) PRs - not something to open a PR from
 	// itself.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260914063425-8f01320a487e
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260915080045-7ad1abb95785
 	// TODO: drop once stmcginnis/gofish#570 merges upstream and a release containing it lands, and
 	// let the mcanevet/bmclib pin above resolve gofish normally. bmclib's #468/#472 (bundled into
 	// tink-integration above) depend on Bios.UpdateBiosAttributesExactApplyAt, which only exists
