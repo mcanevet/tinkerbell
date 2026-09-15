@@ -76,9 +76,9 @@ type Action struct {
 
 	// SecureBootCertificateImport represents importing a certificate into a single UEFI Secure Boot key database.
 	SecureBootCertificateImport *SecureBootCertificateImportAction `json:"secureBootCertificateImport,omitempty"`
-	// SecureBootKeyManagement represents enabling/disabling out-of-band acceptance of
+	// AllowCustomSecureBootKeys represents enabling/disabling out-of-band acceptance of
 	// custom UEFI Secure Boot keys.
-	SecureBootKeyManagement *SecureBootKeyManagementAction `json:"secureBootKeyManagement,omitempty"`
+	AllowCustomSecureBootKeys *AllowCustomSecureBootKeysAction `json:"allowCustomSecureBootKeys,omitempty"`
 }
 
 // TaskStatus defines the observed state of Task.

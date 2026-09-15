@@ -111,7 +111,7 @@ type testProvider struct {
 	ErrResetSecureBootKeys         error
 	ErrResetSecureBootDatabaseKeys error
 	ErrImportSecureBootCertificate error
-	ErrSecureBootKeyManagement     error
+	ErrAllowCustomSecureBootKeys   error
 
 	// ResetSecureBootKeysCalledWith records the resetType passed to the last
 	// ResetSecureBootKeys call, so tests can assert it was forwarded correctly.
@@ -176,7 +176,7 @@ func (t *testProvider) Features() registrar.Features {
 		providers.FeatureResetSecureBootKeys,
 		providers.FeatureResetSecureBootDatabaseKeys,
 		providers.FeatureImportSecureBootCertificate,
-		providers.FeatureSetSecureBootKeyManagement,
+		providers.FeatureAllowCustomSecureBootKeys,
 	}
 }
 
@@ -247,8 +247,8 @@ func (t *testProvider) ImportSecureBootCertificate(_ context.Context, database b
 	return t.ErrImportSecureBootCertificate
 }
 
-func (t *testProvider) SetSecureBootKeyManagement(_ context.Context, _ bool) (rebootRequired bool, err error) {
-	return false, t.ErrSecureBootKeyManagement
+func (t *testProvider) AllowCustomSecureBootKeys(_ context.Context, _ bool) (rebootRequired bool, err error) {
+	return false, t.ErrAllowCustomSecureBootKeys
 }
 
 // newMockBMCClientFactoryFunc returns a new BMCClientFactoryFunc.
