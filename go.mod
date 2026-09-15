@@ -231,7 +231,7 @@ require (
 	github.com/soheilhy/cmux v0.1.5 // indirect
 	github.com/spf13/cast v1.7.0 // indirect
 	github.com/spf13/cobra v1.10.2 // indirect
-	github.com/stmcginnis/gofish v0.25.1-0.20260910061323-82603738c3d2 // indirect
+	github.com/stmcginnis/gofish v0.25.1-0.20260915152414-af1cf20386d5 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
@@ -301,18 +301,14 @@ require (
 )
 
 replace (
-	// TODO: drop once bmc-toolbox/bmclib#464, #465, #466, #467, #468, #469, #470, #471, and #472
-	// merge upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit
-	// directly. This pin points at mcanevet/bmclib's tink-integration, a local integration branch
-	// merging all of those (independent, separately opened) PRs - not something to open a PR from
-	// itself.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260915080045-7ad1abb95785
-	// TODO: drop once stmcginnis/gofish#570 merges upstream and a release containing it lands, and
-	// let the mcanevet/bmclib pin above resolve gofish normally. bmclib's #468/#472 (bundled into
-	// tink-integration above) depend on Bios.UpdateBiosAttributesExactApplyAt, which only exists
-	// on this fork branch; without this replace, tinkerbell resolves the plain upstream gofish for
-	// its own (indirect) dependency on it and fails to build.
-	github.com/stmcginnis/gofish => github.com/mcanevet/gofish v0.25.1-0.20260910131025-c6f56923c825
+	// TODO: drop once bmc-toolbox/bmclib#465, #466, #467, #468, #470, #471, and #472 merge
+	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit directly.
+	// This pin points at mcanevet/bmclib's tink-integration, a local integration branch merging
+	// all of those (independent, separately opened) PRs - not something to open a PR from
+	// itself. No gofish replace needed anymore: stmcginnis/gofish#571 (merged) fixed the
+	// diff-baseline bug bmclib#468/#472 used to work around with a now-dropped exact-write fork
+	// dependency, so bmclib's own require resolves gofish directly.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260915155231-7f07a3f17bf8
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4
