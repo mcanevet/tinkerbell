@@ -301,14 +301,13 @@ require (
 )
 
 replace (
-	// TODO: drop once bmc-toolbox/bmclib#465, #466, #467, #468, #470, #471, and #472 merge
-	// upstream, and bump the require above to the resulting bmc-toolbox/bmclib commit directly.
-	// This pin points at mcanevet/bmclib's tink-integration, a local integration branch merging
-	// all of those (independent, separately opened) PRs - not something to open a PR from
-	// itself. No gofish replace needed anymore: stmcginnis/gofish#571 (merged) fixed the
-	// diff-baseline bug bmclib#468/#472 used to work around with a now-dropped exact-write fork
-	// dependency, so bmclib's own require resolves gofish directly.
-	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260915155231-7f07a3f17bf8
+	// TODO: drop once bmc-toolbox/bmclib#466, #467, #470, and #471 merge upstream, and bump the
+	// require above to the resulting bmc-toolbox/bmclib commit directly. #465 and #468 have
+	// already merged upstream, and #472 was folded into #466 (its fix landed as a commit there
+	// instead of a separate PR). This pin points at mcanevet/bmclib's tink-integration, a local
+	// integration branch merging the remaining, independent, separately opened PRs - not
+	// something to open a PR from itself.
+	github.com/bmc-toolbox/bmclib/v2 => github.com/mcanevet/bmclib/v2 v2.3.6-0.20260917142616-bd44ddb1d0a5
 	github.com/tinkerbell/tinkerbell/api => ./api
 	k8s.io/api => k8s.io/api v0.36.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.36.4
