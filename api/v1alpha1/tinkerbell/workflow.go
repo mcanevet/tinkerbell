@@ -22,6 +22,11 @@ const (
 	WorkflowStateFailed    = WorkflowState("FAILED")
 	WorkflowStateTimeout   = WorkflowState("TIMEOUT")
 
+	// WorkflowStateAwaitingCheckIn means the Workflow's Template set Spec.RequiresCheckIn,
+	// so rendering is deferred until the target Agent's first check-in, when its
+	// live-reported hardware attributes are available. Tasks are empty until then.
+	WorkflowStateAwaitingCheckIn = WorkflowState("AWAITING_CHECKIN")
+
 	BootJobFailed           WorkflowConditionType = "BootJobFailed"
 	BootJobComplete         WorkflowConditionType = "BootJobComplete"
 	BootJobRunning          WorkflowConditionType = "BootJobRunning"
@@ -33,6 +38,10 @@ const (
 
 	TemplateRenderingSuccessful TemplateRendering = "successful"
 	TemplateRenderingFailed     TemplateRendering = "failed"
+	// TemplateRenderingDeferred means rendering has not happened yet, pending the target
+	// Agent's first check-in - this is expected, not an error. Distinguish from
+	// TemplateRenderingFailed in tooling that surfaces this to operators.
+	TemplateRenderingDeferred TemplateRendering = "deferred"
 
 	BootModeNetboot    BootMode = "netboot"
 	BootModeISO        BootMode = "iso"

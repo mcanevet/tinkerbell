@@ -13,6 +13,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+// postPrepareState returns the State prepareWorkflow should transition to once boot
+// orchestration completes. A Workflow whose Template opted into Spec.RequiresCheckIn
+// hasn't rendered yet (TemplateRendering is still Deferred) and must wait for the target
+// Agent's first check-in; every other Workflow was already rendered immediately by
+// processNewWorkflow before boot orchestration ever ran, and is ready to serve now.
+func (s *state) postPrepareState() v1alpha1.WorkflowState {
+	if s.workflow.Status.TemplateRendering == v1alpha1.TemplateRenderingDeferred {
+		return v1alpha1.WorkflowStateAwaitingCheckIn
+	}
+	return v1alpha1.WorkflowStatePending
+}
+
 // prepareWorkflow prepares the workflow for execution.
 // The workflow (s.workflow) can be updated even if an error occurs.
 // Any patching of the workflow object in a cluster is left up to the caller.
@@ -78,7 +90,7 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
@@ -147,7 +159,7 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
@@ -186,12 +198,12 @@ func (s *state) prepareWorkflow(ctx context.Context) (reconcile.Result, error) {
 				return r, err
 			}
 			if s.workflow.Status.BootOptions.Jobs[name.String()].Complete && s.workflow.Status.State == v1alpha1.WorkflowStatePreparing {
-				s.workflow.Status.State = v1alpha1.WorkflowStatePending
+				s.workflow.Status.State = s.postPrepareState()
 			}
 			return r, nil
 		}
 	default:
-		s.workflow.Status.State = v1alpha1.WorkflowStatePending
+		s.workflow.Status.State = s.postPrepareState()
 	}
 
 	return reconcile.Result{}, nil

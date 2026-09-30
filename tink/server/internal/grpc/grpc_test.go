@@ -506,9 +506,13 @@ func compareErrors(t *testing.T, got, want error) {
 
 type mockBackendReadWriter struct {
 	workflow    *tinkerbell.Workflow
+	workflows   []tinkerbell.Workflow // when set, ListWorkflows returns this instead of []{*workflow}
 	writeErr    error
 	hardware    *tinkerbell.Hardware
 	hardwareErr error
+	template    *tinkerbell.Template
+	templates   map[string]*tinkerbell.Template // when set, ReadTemplate looks up by name instead of returning *template
+	templateErr error
 
 	readWorkflowFunc   func() (*tinkerbell.Workflow, error)
 	listWorkflowsFunc  func() ([]tinkerbell.Workflow, error)
@@ -520,9 +524,12 @@ type mockBackendReadWriter struct {
 	updatedHardware *tinkerbell.Hardware // captures the hardware passed to UpdateHardware
 	updateOpts      data.UpdateOptions   // captures the options passed to UpdateHardware
 
+	updatedWorkflow *tinkerbell.Workflow // captures the last workflow passed to UpdateWorkflow
+
 	appliedInBand *tinkerbell.Attributes // captures the attrs passed to ApplyHardwareInBandAttributes
 
-	readHardwareCalls int // counts calls to ReadHardware, to catch redundant re-reads
+	readHardwareCalls   int // counts calls to ReadHardware, to catch redundant re-reads
+	updateHardwareCalls int // counts calls to UpdateHardware, to catch redundant re-writes
 }
 
 func (m *mockBackendReadWriter) ReadWorkflow(_ context.Context, _ string, _ string) (*tinkerbell.Workflow, error) {
@@ -541,6 +548,9 @@ func (m *mockBackendReadWriter) ListWorkflows(_ context.Context, _ data.Workflow
 	if m.listWorkflowsFunc != nil {
 		return m.listWorkflowsFunc()
 	}
+	if m.workflows != nil {
+		return m.workflows, nil
+	}
 	if m.workflow != nil {
 		return []tinkerbell.Workflow{*m.workflow}, nil
 	}
@@ -549,14 +559,11 @@ func (m *mockBackendReadWriter) ListWorkflows(_ context.Context, _ data.Workflow
 
 func (m *mockBackendReadWriter) UpdateWorkflow(_ context.Context, wf *tinkerbell.Workflow, _ data.UpdateOptions) error {
 	m.workflowUpdates++
+	m.updatedWorkflow = wf
 	if m.updateWorkflowFunc != nil {
 		return m.updateWorkflowFunc(wf)
 	}
 	return m.writeErr
-}
-
-func (m *mockBackendReadWriter) ReadTemplate(_ context.Context, _ string, _ string) (*tinkerbell.Template, error) {
-	return nil, errors.New("template not found")
 }
 
 func (m *mockBackendReadWriter) ReadHardware(_ context.Context, _ string, _ string) (*tinkerbell.Hardware, error) {
@@ -581,6 +588,7 @@ func (m *mockBackendReadWriter) FilterHardware(_ context.Context, _ data.Hardwar
 }
 
 func (m *mockBackendReadWriter) UpdateHardware(_ context.Context, hw *tinkerbell.Hardware, opts data.UpdateOptions) error {
+	m.updateHardwareCalls++
 	m.updatedHardware = hw
 	m.updateOpts = opts
 	return nil
@@ -589,6 +597,21 @@ func (m *mockBackendReadWriter) UpdateHardware(_ context.Context, hw *tinkerbell
 func (m *mockBackendReadWriter) ApplyHardwareInBandAttributes(_ context.Context, _, _ string, attrs *tinkerbell.Attributes) error {
 	m.appliedInBand = attrs
 	return nil
+}
+
+func (m *mockBackendReadWriter) ReadTemplate(_ context.Context, name string, _ string) (*tinkerbell.Template, error) {
+	if m.templates != nil {
+		if tpl, ok := m.templates[name]; ok {
+			return tpl, nil
+		}
+	}
+	if m.template != nil {
+		return m.template, nil
+	}
+	if m.templateErr != nil {
+		return nil, m.templateErr
+	}
+	return nil, errors.New("template not found")
 }
 
 func TestGetActionHardwareAttributes(t *testing.T) {
@@ -665,7 +688,7 @@ func TestGetActionHardwareAttributes(t *testing.T) {
 			},
 			wantNoHWUpdate: true,
 		},
-		"first action with HardwareRef and existing annotation still applies inBand": {
+		"first action with HardwareRef and existing annotation is write-once but still applies inBand": {
 			workflow: baseWorkflow("my-hw"),
 			hardware: &tinkerbell.Hardware{
 				ObjectMeta: metav1.ObjectMeta{
@@ -681,8 +704,11 @@ func TestGetActionHardwareAttributes(t *testing.T) {
 				AgentId:         toPtr("machine-mac-1"),
 				AgentAttributes: &proto.AgentAttributes{Cpu: &proto.CPU{TotalCores: toPtr(uint32(4))}},
 			},
-			// The legacy annotation is write-once and stays untouched, but inBand is
-			// not gated on it: it must still be (re-)applied on every matching report.
+			// The legacy annotation is write-once here (unlike renderOnCheckIn's own
+			// always-overwrite refresh, which needs live values for a Template that
+			// depends on them) - an existing value is left alone even though this
+			// check-in reports different attributes. inBand is applied independently of
+			// it either way (that path is always-overwrite).
 			wantNoHWUpdate:        true,
 			wantInBand:            true,
 			wantReadHardwareCalls: toPtr(1),
@@ -1469,6 +1495,35 @@ func TestGetActionTerminalDoesNotShadowActive(t *testing.T) {
 		}
 		if backend.workflowLists != 1 {
 			t.Fatalf("expected a permanent error to stop retrying after one list, got %d lists", backend.workflowLists)
+		}
+	})
+
+	t.Run("terminal plus awaiting check-in keeps retrying", func(t *testing.T) {
+		awaiting := tinkerbell.Workflow{
+			ObjectMeta: metav1.ObjectMeta{Name: "machine1", Namespace: "default"},
+			Status:     tinkerbell.WorkflowStatus{State: tinkerbell.WorkflowStateAwaitingCheckIn},
+		}
+		backend := &mockBackendReadWriter{}
+		backend.listWorkflowsFunc = func() ([]tinkerbell.Workflow, error) {
+			return []tinkerbell.Workflow{terminalWorkflowFixture("machine0"), awaiting}, nil
+		}
+		handler := &Handler{
+			Logger:  logr.Discard(),
+			Backend: backend,
+			NowFunc: func() time.Time { return time.Time{} },
+			RetryOptions: []backoff.RetryOption{
+				backoff.WithMaxTries(3),
+				backoff.WithBackOff(backoff.NewConstantBackOff(0)),
+			},
+		}
+
+		// No AgentAttributes on the request, so the awaiting Workflow can't render yet.
+		_, err := handler.GetAction(context.Background(), &proto.ActionRequest{AgentId: toPtr("machine-mac-1")})
+		if status.Code(err) != codes.NotFound {
+			t.Fatalf("unexpected error code: got %s, want %s (error: %v)", status.Code(err), codes.NotFound, err)
+		}
+		if backend.workflowLists != 3 {
+			t.Fatalf("expected a Workflow awaiting check-in to keep the error retryable, got %d lists, want 3", backend.workflowLists)
 		}
 	})
 }

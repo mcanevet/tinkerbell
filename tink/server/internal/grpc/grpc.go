@@ -20,6 +20,7 @@ import (
 	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	kerrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -212,13 +213,55 @@ func (h *Handler) doGetAction(ctx context.Context, req *proto.ActionRequest, opt
 
 	journal.Log(ctx, "found Workflows", "workflows", len(wfs))
 	var wf tinkerbell.Workflow
+	// annotatedOnCheckIn tracks whether wf was just rendered (and its Hardware read and
+	// attributes-annotated) by renderOnCheckIn below, so the isFirstAction branch further
+	// down can skip resolveAndAnnotateHardware's otherwise-redundant second read+write of
+	// the same Hardware object for the same check-in.
+	var annotatedOnCheckIn bool
+	// hwCache holds every Hardware object (and its resolved References) already obtained
+	// by renderOnCheckIn for this request, keyed by namespace/HardwareRef - so two or more
+	// AwaitingCheckIn sibling Workflows sharing the same HardwareRef (e.g. one that fails
+	// to render before a later, servable sibling) don't each redundantly re-read/re-patch
+	// Hardware or re-resolve References for this same check-in.
+	hwCache := map[string]*checkInCache{}
+	// lastTransientErr records the most recent transient (not permanent, not a
+	// conflict) renderOnCheckIn failure across candidates - if the loop ends without
+	// selecting anything, the final fallback below surfaces this instead of a generic
+	// NotFound, so a real (if temporary) backend problem isn't misreported as "no
+	// Workflow found".
+	var lastTransientErr error
 	// Scan every Workflow for this agent instead of returning on the first
 	// ineligible one. Terminal Workflows keep their Status.AgentID and so remain
 	// in the agent-ID index indefinitely; returning early would let one of them
 	// permanently shadow a later pending/running Workflow assigned to the same
 	// agent, so its Action would never be served.
-	var found, preparing, terminal, otherNotRunning bool
-	for _, w := range wfs {
+	var found, preparing, terminal, otherNotRunning, awaitingCheckIn bool
+	for i := range wfs {
+		w := wfs[i]
+		// candidateHW/candidateAnnotated hold this iteration's renderOnCheckIn result, if
+		// any, local until w is actually selected below - committing them to
+		// hwRef/annotatedOnCheckIn eagerly would leak this candidate's Hardware onto a
+		// later, different Workflow if this one is abandoned (e.g. renders to zero Tasks).
+		var candidateHW *tinkerbell.Hardware
+		var candidateAnnotated bool
+		if w.Status.State == tinkerbell.WorkflowStateAwaitingCheckIn {
+			rendered, hw, annotated, ok, abortErr, transientErr := h.renderAwaitingCheckIn(ctx, w, attrs, hwCache)
+			if abortErr != nil {
+				return nil, status.Errorf(codes.Aborted, "conflict persisting rendered workflow: %v", abortErr)
+			}
+			if transientErr != nil {
+				lastTransientErr = transientErr
+			}
+			if !ok {
+				// Still waiting (no attributes on this request) or failed to render: either
+				// way not a terminal outcome for this request's error classification below.
+				awaitingCheckIn = true
+				continue
+			}
+			w = rendered
+			candidateHW = hw
+			candidateAnnotated = annotated
+		}
 		if len(w.Status.Tasks) == 0 {
 			continue
 		}
@@ -240,6 +283,10 @@ func (h *Handler) doGetAction(ctx context.Context, req *proto.ActionRequest, opt
 		}
 		wf = w
 		found = true
+		if candidateHW != nil {
+			hwRef = candidateHW
+		}
+		annotatedOnCheckIn = candidateAnnotated
 		journal.Log(ctx, "found Workflow", "workflow", wf.Name)
 		break
 	}
@@ -250,6 +297,10 @@ func (h *Handler) doGetAction(ctx context.Context, req *proto.ActionRequest, opt
 			return nil, status.Error(codes.FailedPrecondition, "Workflow is in preparing state")
 		case otherNotRunning:
 			return nil, status.Error(codes.FailedPrecondition, "Workflow not in pending or running state")
+		case awaitingCheckIn:
+			// A Workflow still waiting on its check-in render isn't terminal, so this
+			// must stay retryable even if every other candidate is.
+			return nil, noServableWorkflowError(ctx, lastTransientErr)
 		case terminal:
 			// Every candidate is terminal and terminal state never changes, so stop
 			// the server-side retry loop instead of retrying for the full timeout.
@@ -264,7 +315,9 @@ func (h *Handler) doGetAction(ctx context.Context, req *proto.ActionRequest, opt
 	if isFirstAction(wf.Status.Tasks[0]) {
 		task = &wf.Status.Tasks[0]
 		journal.Log(ctx, "first Task, first Action")
-		hwRef = h.resolveAndAnnotateHardware(ctx, log, hwRef, wf.Spec.HardwareRef, wf.Namespace, attrs)
+		if !annotatedOnCheckIn {
+			hwRef = h.resolveAndAnnotateHardware(ctx, log, hwRef, wf.Spec.HardwareRef, wf.Namespace, attrs)
+		}
 	} else {
 		for i := range wf.Status.Tasks {
 			// check if all actions have been run successfully in this task.
@@ -362,6 +415,84 @@ func (h *Handler) doGetAction(ctx context.Context, req *proto.ActionRequest, opt
 	log.Info("sending action", "action", ar, "actionID", action.ID)
 	journal.Log(ctx, "sending Action", "action", ar)
 	return ar, nil
+}
+
+// noServableWorkflowError builds doGetAction's error for "no candidate Workflow ended up
+// servable". lastTransientErr, when non-nil, means no candidate was ever actually
+// rendered because of a transient failure (not a broken Template/Hardware, which would
+// have been reported Failed and simply skipped) - surfaced instead of a generic NotFound,
+// so this isn't misreported as "no Workflow exists" when the real cause is a temporary
+// backend problem GetAction's own outer retry can recover from.
+func noServableWorkflowError(ctx context.Context, lastTransientErr error) error {
+	if lastTransientErr != nil {
+		journal.Log(ctx, "no servable Workflow found; last error was transient", "error", lastTransientErr)
+		return errors.Join(ErrBackendRead, status.Errorf(codes.Unavailable, "error rendering template on check-in: %v", lastTransientErr))
+	}
+	journal.Log(ctx, "no Tasks found in Workflow")
+	return status.Error(codes.NotFound, "no Tasks found in Workflow")
+}
+
+// renderAwaitingCheckIn attempts to render an AwaitingCheckIn candidate Workflow w using
+// attrs, updating hwCache with anything renderOnCheckIn obtained along the way (see
+// doGetAction's hwCache).
+//
+// ok is true when w was actually rendered and should be considered as the caller's
+// selection loop candidate. ok is false with a nil abortErr when this candidate should
+// simply be passed over (continue the loop) rather than considered further: no
+// attributes yet on this check-in, or a render failure (renderOnCheckIn has already
+// persisted the terminal ones as Failed).
+//
+// abortErr is non-nil only for a resourceVersion conflict on the final persist: w
+// actually rendered successfully but lost a race to save it, so retrying this exact
+// candidate (a fresh doGetAction attempt against current state) will very likely
+// succeed immediately - unlike a genuinely broken sibling, this isn't something a
+// different candidate can substitute for. The caller should abort the whole request with
+// abortErr so GetAction's outer backoff.Retry redoes it, rather than silently serving a
+// different, possibly wrong Workflow this round.
+//
+// renderErr, when ok is false and abortErr is nil, is renderOnCheckIn's actual failure
+// (permanent or transient - not reclassified here) purely so the caller can surface it if
+// no candidate ends up servable, instead of a generic NotFound that would otherwise hide
+// a real (if temporary) backend problem behind "no Workflow found".
+func (h *Handler) renderAwaitingCheckIn(ctx context.Context, w tinkerbell.Workflow, attrs *data.AgentAttributes, hwCache map[string]*checkInCache) (rendered tinkerbell.Workflow, hw *tinkerbell.Hardware, annotated, ok bool, abortErr, renderErr error) {
+	if attrs == nil {
+		// No attributes on this check-in yet (e.g. an Agent build predating attribute
+		// reporting) - nothing to render with. Leave the Workflow waiting; the Agent
+		// will retry.
+		journal.Log(ctx, "workflow awaiting check-in, no attributes on this request", "workflow", w.Name)
+		return w, nil, false, false, nil, nil
+	}
+	cacheKey := w.Namespace + "/" + w.Spec.HardwareRef
+	result, cache, err := h.renderOnCheckIn(ctx, &w, attrs, hwCache[cacheKey])
+	// Cache regardless of err: renderOnCheckIn still returns what it obtained (read and
+	// attributes-annotated Hardware, resolved References) on a failure that happens after
+	// acquiring them, e.g. a broken Template - a later sibling sharing this HardwareRef
+	// can still reuse them.
+	if cache != nil && cache.hw != nil && w.Spec.HardwareRef != "" {
+		hwCache[cacheKey] = cache
+	}
+	if err != nil {
+		if kerrors.IsConflict(err) {
+			return w, nil, false, false, err, nil
+		}
+		// Don't abort the whole request over one broken Workflow: this Agent ID can have
+		// more than one Workflow outstanding (e.g. an administrative Agent shared across
+		// Workflows), and a sibling Workflow later in wfs may still be perfectly
+		// servable. renderOnCheckIn has already persisted this one as Failed, so it
+		// won't be re-selected on a future check-in.
+		journal.Log(ctx, "error rendering template on check-in", "error", err, "workflow", w.Name)
+		return w, nil, false, false, nil, err
+	}
+	// annotated is always true on success, even when w.Spec.HardwareRef == "" and
+	// cache.hw is just the zero-value placeholder hardwareAndReferencesForCheckIn falls
+	// back to (never actually annotated, nothing to annotate). This is deliberate, not
+	// an approximation: resolveAndAnnotateHardware/resolveHardware only ever check
+	// hwRef's nilness, not whether it's a meaningful object, so if annotated were false
+	// here doGetAction would call resolveAndAnnotateHardware with this non-nil empty
+	// placeholder as hwRef - which resolveHardware returns unchanged (skipping its own
+	// hardwareRef=="" guard entirely) - and setHardwareAttributesAnnotation would then
+	// try to UpdateHardware an empty-Name object with no such guard of its own.
+	return *result, cache.hw, true, true, nil, nil
 }
 
 // resolveAction determines which action to serve for the given task based on the workflow's current state.
@@ -534,31 +665,46 @@ func (h *Handler) doReportActionStatus(ctx context.Context, req *proto.ActionSta
 	return &proto.ActionStatusResponse{}, status.Error(codes.NotFound, "action not found")
 }
 
-// resolveAndAnnotateHardware resolves the Hardware object for a Workflow and persists agent attributes
-// as a legacy annotation. This is only called on the very first action of the Workflow's first Task to
-// avoid unnecessary backend reads; see updateHardwareWithAttributes for why the annotation, once set, is
-// never refreshed by later Workflow runs. The resolved Hardware is returned so callers that need it again
-// in the same request (e.g. for status.attributes.inBand) don't have to re-read it from the backend.
+// resolveAndAnnotateHardware resolves the Hardware object for a Workflow and refreshes its
+// agent-attributes annotation the first time it's ever seen (write-once - see
+// setHardwareAttributesAnnotation). This is only called on the very first action to avoid
+// unnecessary backend reads. The resolved Hardware is returned so callers that need it
+// again in the same request (e.g. for status.attributes.inBand, or checkin.go's
+// renderOnCheckIn) don't have to re-read it from the backend.
 func (h *Handler) resolveAndAnnotateHardware(ctx context.Context, log logr.Logger, hwRef *tinkerbell.Hardware, hardwareRef, namespace string, attrs *data.AgentAttributes) *tinkerbell.Hardware {
 	if attrs == nil {
 		return hwRef
 	}
-	hwRef = h.resolveHardware(ctx, hwRef, hardwareRef, namespace)
+	hwRef, _ = h.resolveHardware(ctx, hwRef, hardwareRef, namespace)
 	if hwRef == nil {
 		return nil
 	}
-	if err := h.updateHardwareWithAttributes(ctx, log, hwRef, attrs); err != nil {
+	if err := h.setHardwareAttributesAnnotation(ctx, hwRef, attrs, false); err != nil {
 		journal.Log(ctx, "error updating Hardware with attributes", "error", err)
 		log.Error(err, "error updating Hardware with attributes")
+		return hwRef
 	}
+	journal.Log(ctx, "updated Hardware with attributes annotation", "hardware", hwRef.Name)
+	log.Info("updated Hardware with attributes annotation", "hardware", hwRef.Name)
 	return hwRef
 }
 
-// updateHardwareWithAttributes updates the Hardware with the given attributes annotation if it doesn't already have it.
-// It uses a merge-patch (rather than a full update) to avoid conflicts with other controllers that may be
-// modifying the same Hardware object concurrently (e.g. the workflow controller toggling allowPXE).
-func (h *Handler) updateHardwareWithAttributes(ctx context.Context, log logr.Logger, hw *tinkerbell.Hardware, attrs *data.AgentAttributes) error {
-	if hw == nil || attrs == nil || hw.Annotations[constant.AttributesAnnotation] != "" {
+// setHardwareAttributesAnnotation marshals attrs onto hw.Annotations[constant.AttributesAnnotation]
+// and persists it via a merge-patch (to avoid conflicts with other controllers concurrently
+// modifying the same Hardware object, e.g. the workflow controller toggling allowPXE).
+//
+// overwrite controls whether an existing annotation value is replaced. checkin.go's
+// renderOnCheckIn passes true: a Template using Spec.RequiresCheckIn needs *this*
+// check-in's live values, and a write-once guard would keep serving a stale snapshot from
+// Hardware's first-ever check-in forever. resolveAndAnnotateHardware (the legacy
+// first-action refresh used by every Workflow, not just RequiresCheckIn ones) passes
+// false, preserving the original write-once bookkeeping semantics instead of adding a
+// Kubernetes API write to every Workflow's first action fleet-wide.
+func (h *Handler) setHardwareAttributesAnnotation(ctx context.Context, hw *tinkerbell.Hardware, attrs *data.AgentAttributes, overwrite bool) error {
+	if hw == nil || attrs == nil {
+		return nil
+	}
+	if !overwrite && hw.Annotations[constant.AttributesAnnotation] != "" {
 		return nil
 	}
 
@@ -582,9 +728,6 @@ func (h *Handler) updateHardwareWithAttributes(ctx context.Context, log logr.Log
 		return fmt.Errorf("error updating Hardware with attributes annotation: %w", err)
 	}
 
-	journal.Log(ctx, "updated Hardware with attributes annotation", "hardware", hw.Name)
-	log.Info("updated Hardware with attributes annotation", "hardware", hw.Name)
-
 	return nil
 }
 
@@ -599,7 +742,7 @@ func (h *Handler) resolveAndApplyInBandAttributes(ctx context.Context, log logr.
 	if attrs == nil {
 		return
 	}
-	hwRef = h.resolveHardware(ctx, hwRef, hardwareRef, namespace)
+	hwRef, _ = h.resolveHardware(ctx, hwRef, hardwareRef, namespace)
 	if hwRef == nil || hwRef.Spec.AgentID != agentID {
 		return
 	}
@@ -616,19 +759,21 @@ func (h *Handler) resolveAndApplyInBandAttributes(ctx context.Context, log logr.
 	}
 }
 
-// resolveHardware returns hwRef unchanged if already resolved, otherwise reads it from the backend.
-func (h *Handler) resolveHardware(ctx context.Context, hwRef *tinkerbell.Hardware, hardwareRef, namespace string) *tinkerbell.Hardware {
+// resolveHardware returns hwRef unchanged if already resolved, otherwise reads it from the
+// backend. Returns (nil, nil) when hardwareRef is empty - nothing to look up, not a
+// failure - so callers can tell that apart from a lookup that was attempted and failed.
+func (h *Handler) resolveHardware(ctx context.Context, hwRef *tinkerbell.Hardware, hardwareRef, namespace string) (*tinkerbell.Hardware, error) {
 	if hwRef != nil {
-		return hwRef
+		return hwRef, nil
 	}
 	if hardwareRef == "" {
-		return nil
+		return nil, nil
 	}
 	hw, err := h.Backend.ReadHardware(ctx, hardwareRef, namespace)
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return hw
+	return hw, nil
 }
 
 func toPtr[T any](v T) *T {

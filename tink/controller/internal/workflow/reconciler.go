@@ -185,14 +185,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reco
 		rc, err := s.postActions(ctx)
 
 		return rc, errors.Join(err, mergePatchStatus(ctx, r.client, stored, wflow))
-	case v1alpha1.WorkflowStatePending, v1alpha1.WorkflowStateTimeout, v1alpha1.WorkflowStateFailed, v1alpha1.WorkflowStateSuccess:
+	case v1alpha1.WorkflowStatePending, v1alpha1.WorkflowStateTimeout, v1alpha1.WorkflowStateFailed, v1alpha1.WorkflowStateSuccess, v1alpha1.WorkflowStateAwaitingCheckIn:
 		journal.Log(ctx, "controller will not trigger another reconcile", "state", wflow.Status.State)
 
 		return reconcile.Result{}, nil
 	case v1alpha1.WorkflowState("STATE_PENDING"):
 		journal.Log(ctx, "workflow using a deprecated pending state, reprocessing", "state", wflow.Status.State)
 
-		return reconcile.Result{}, errors.Join(r.processWorkflow(ctx, logger, wflow), mergePatchStatus(ctx, r.client, stored, wflow))
+		return reconcile.Result{}, errors.Join(r.processWorkflow(ctx, logger, wflow, nil), mergePatchStatus(ctx, r.client, stored, wflow))
 	default:
 		journal.Log(ctx, "controller will not trigger reconcile, unknown state", "state", wflow.Status.State)
 	}
@@ -213,7 +213,9 @@ func mergePatchStatus(ctx context.Context, cc ctrlclient.Client, original, updat
 	return nil
 }
 
-func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) error {
+// readTemplate fetches the Template referenced by stored.Spec.TemplateRef, recording a
+// failed TemplateRenderedSuccess condition on stored if it can't be read.
+func (r *Reconciler) readTemplate(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) (*v1alpha1.Template, error) {
 	tpl := &v1alpha1.Template{}
 	if err := r.client.Get(ctx, ctrlclient.ObjectKey{Name: stored.Spec.TemplateRef, Namespace: stored.Namespace}, tpl); err != nil {
 		if kerrors.IsNotFound(err) {
@@ -229,7 +231,7 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 				Time:    &metav1.Time{Time: metav1.Now().UTC()},
 			})
 
-			return fmt.Errorf(
+			return nil, fmt.Errorf(
 				"no template found: name=%v; namespace=%v",
 				stored.Spec.TemplateRef,
 				stored.Namespace,
@@ -243,7 +245,20 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 			Message: err.Error(),
 			Time:    &metav1.Time{Time: metav1.Now().UTC()},
 		})
-		return err
+		return nil, err
+	}
+	return tpl, nil
+}
+
+// processWorkflow renders stored's Template now. tpl is the already-fetched Template, or
+// nil to fetch it from stored.Spec.TemplateRef.
+func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow, tpl *v1alpha1.Template) error {
+	if tpl == nil {
+		var err error
+		tpl, err = r.readTemplate(ctx, logger, stored)
+		if err != nil {
+			return err
+		}
 	}
 
 	var hardware v1alpha1.Hardware
@@ -314,8 +329,19 @@ func (r *Reconciler) processWorkflow(ctx context.Context, logger logr.Logger, st
 	return nil
 }
 
+// processNewWorkflow renders stored's Template now, unless the Template sets
+// Spec.RequiresCheckIn, in which case rendering is left to tink-server on the target
+// Agent's first check-in. Boot orchestration only needs Hardware.Spec, never the
+// rendered Template, so it starts either way.
 func (r *Reconciler) processNewWorkflow(ctx context.Context, logger logr.Logger, stored *v1alpha1.Workflow) (reconcile.Result, error) {
-	if err := r.processWorkflow(ctx, logger, stored); err != nil {
+	tpl, err := r.readTemplate(ctx, logger, stored)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if tpl.Spec.RequiresCheckIn != nil && *tpl.Spec.RequiresCheckIn {
+		stored.Status.TemplateRendering = v1alpha1.TemplateRenderingDeferred
+	} else if err := r.processWorkflow(ctx, logger, stored, tpl); err != nil {
 		return reconcile.Result{}, err
 	}
 
@@ -325,7 +351,11 @@ func (r *Reconciler) processNewWorkflow(ctx context.Context, logger logr.Logger,
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	stored.Status.State = v1alpha1.WorkflowStatePending
+	if stored.Status.TemplateRendering == v1alpha1.TemplateRenderingDeferred {
+		stored.Status.State = v1alpha1.WorkflowStateAwaitingCheckIn
+	} else {
+		stored.Status.State = v1alpha1.WorkflowStatePending
+	}
 
 	return reconcile.Result{}, nil
 }
