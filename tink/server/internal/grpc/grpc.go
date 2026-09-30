@@ -17,6 +17,7 @@ import (
 	"github.com/tinkerbell/tinkerbell/pkg/data"
 	"github.com/tinkerbell/tinkerbell/pkg/journal"
 	"github.com/tinkerbell/tinkerbell/pkg/proto"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,10 +45,16 @@ type Backend interface {
 	HardwareFilterer
 	HardwareUpdater
 	HardwareInBandAttributesApplier
+	TemplateReader
 }
 
 type WorkflowCreator interface {
 	CreateWorkflow(ctx context.Context, wf *tinkerbell.Workflow) error
+}
+
+// TemplateReader reads a Template object.
+type TemplateReader interface {
+	ReadTemplate(ctx context.Context, name, namespace string) (*tinkerbell.Template, error)
 }
 
 type WorkflowReader interface {
@@ -93,6 +100,12 @@ type Handler struct {
 	NowFunc          func() time.Time
 	AutoCapabilities AutoCapabilities
 	RetryOptions     []backoff.RetryOption
+
+	// DynamicClient and ReferenceRules resolve Hardware.Spec.References when rendering a
+	// Workflow's Template. DynamicClient may be nil, in which case References are left
+	// unresolved (empty), the same as if none were allow-listed.
+	DynamicClient  render.DynamicReader
+	ReferenceRules render.ReferenceRules
 
 	proto.UnimplementedWorkflowServiceServer
 }

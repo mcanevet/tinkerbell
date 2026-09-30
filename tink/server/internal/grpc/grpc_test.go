@@ -555,6 +555,10 @@ func (m *mockBackendReadWriter) UpdateWorkflow(_ context.Context, wf *tinkerbell
 	return m.writeErr
 }
 
+func (m *mockBackendReadWriter) ReadTemplate(_ context.Context, _ string, _ string) (*tinkerbell.Template, error) {
+	return nil, errors.New("template not found")
+}
+
 func (m *mockBackendReadWriter) ReadHardware(_ context.Context, _ string, _ string) (*tinkerbell.Hardware, error) {
 	m.readHardwareCalls++
 	if m.hardware != nil {

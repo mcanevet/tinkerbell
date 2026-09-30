@@ -45,6 +45,16 @@ func Execute(ctx context.Context, cancel context.CancelFunc, args []string) erro
 	return executeWithOutput(ctx, cancel, args, os.Stdout)
 }
 
+// effectiveReferenceDenylist returns the reference deny-list the workflow controller
+// actually applies for rawDenylist (the --tink-controller-reference-deny-list-rules
+// value): an empty value means deny-all, not deny-nothing.
+func effectiveReferenceDenylist(rawDenylist []string) []string {
+	if len(rawDenylist) > 0 {
+		return rawDenylist
+	}
+	return controller.DefaultReferenceDenylist()
+}
+
 // executeWithOutput allows command output to be captured in tests.
 func executeWithOutput(ctx context.Context, cancel context.CancelFunc, args []string, stdout io.Writer) error { //nolint:cyclop,gocognit // Will need to look into reducing the cyclomatic and cognitive complexity.
 	startTime := time.Now() // used in the HTTP healthcheck handler to report uptime.
@@ -399,8 +409,13 @@ func executeWithOutput(ctx context.Context, cancel context.CancelFunc, args []st
 		s.Config.Backend = b
 		h.Config.SetBackendFromFilterer(b)
 		ts.Config.SetBackends(b)
+		ts.Config.DynamicClient = b
 		tc.Config.Client = b.ClientConfig
 		tc.Config.DynamicClient = b
+		// tink-server resolves Hardware.Spec.References with the same allow/deny-list
+		// policy as the workflow controller.
+		ts.Config.ReferenceRules.Allowlist = tc.Config.ReferenceAllowListRules
+		ts.Config.ReferenceRules.Denylist = effectiveReferenceDenylist(tc.Config.ReferenceDenyListRules)
 		rc.Config.Client = b.ClientConfig
 		ssc.Config.Backend = b
 		if uic.Config.EnableAutoLogin {

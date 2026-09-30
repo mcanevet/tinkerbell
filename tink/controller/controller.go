@@ -8,6 +8,7 @@ import (
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/bmc"
 	"github.com/tinkerbell/tinkerbell/api/v1alpha1/tinkerbell"
 	"github.com/tinkerbell/tinkerbell/tink/controller/internal/workflow"
+	"github.com/tinkerbell/tinkerbell/tink/internal/render"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -23,6 +24,12 @@ var schemeBuilder = runtime.NewSchemeBuilder(
 	tinkerbell.AddToScheme,
 	bmc.AddToScheme,
 )
+
+// DefaultReferenceDenylist returns the deny-list policy in effect when
+// ReferenceDenyListRules is empty: deny every Hardware.Spec.References entry.
+func DefaultReferenceDenylist() []string {
+	return render.DefaultDenylist()
+}
 
 type Config struct {
 	Namespace               string
