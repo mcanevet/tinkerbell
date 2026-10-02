@@ -49,8 +49,6 @@ github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/blang/semver/v4 v4.0.0 h1:1PFHFE6yCCTv8C1TeyNNarDzntLi7wMI5i/pzqYIsAM=
 github.com/blang/semver/v4 v4.0.0/go.mod h1:IbckMUScFkM3pff0VJDNKRiT6TG/YpiHIM2yvyW5YoQ=
-github.com/bmc-toolbox/bmclib/v2 v2.3.6-0.20260929063007-c0b9d1643d74 h1:IVJ190KtwyIo1BHVkafgSrxhmRxN/NMMnU1Y/hdEHD8=
-github.com/bmc-toolbox/bmclib/v2 v2.3.6-0.20260929063007-c0b9d1643d74/go.mod h1:xXi1aa+b77paefmouTBGiqdUl3S61gS484qVBBjXQmY=
 github.com/bmc-toolbox/common v0.0.1 h1:9Phffpmv1S0Qcfu/BD5j2rWoYMQ/tkA1sZs/9tmohsE=
 github.com/bmc-toolbox/common v0.0.1/go.mod h1:Cdnkm+edb6C0pVkyCrwh3JTXAe0iUF9diDG/DztPI9I=
 github.com/bombsimon/logrusr/v2 v2.0.1 h1:1VgxVNQMCvjirZIYaT9JYn6sAVGVEcNtRE0y4mvaOAM=
@@ -353,6 +351,8 @@ github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/matttproud/golang_protobuf_extensions v1.0.1/go.mod h1:D8He9yQNgCq6Z5Ld7szi9bcBfOoFv/3dc6xSMkL2PC0=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20261002101018-09f570523e58 h1:jqDPxFS+0OXmOilPUypfF8q3XxDhMO2mar0mnGyt8LY=
+github.com/mcanevet/bmclib/v2 v2.3.6-0.20261002101018-09f570523e58/go.mod h1:xXi1aa+b77paefmouTBGiqdUl3S61gS484qVBBjXQmY=
 github.com/mdlayher/packet v1.1.2 h1:3Up1NG6LZrsgDVn6X4L9Ge/iyRyxFEFD9o6Pr3Q1nQY=
 github.com/mdlayher/packet v1.1.2/go.mod h1:GEu1+n9sG5VtiRE4SydOmX5GTwyyYlteZiFU+x0kew4=
 github.com/mdlayher/socket v0.5.1 h1:VZaqt6RkGkt2OE9l3GcC6nZkqD3xKeQLyfleW/uBcos=
