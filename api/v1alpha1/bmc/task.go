@@ -76,6 +76,10 @@ type Action struct {
 	// legacy PXE) in BIOS/UEFI firmware, and/or sets the URL UEFI HTTP Boot fetches its boot
 	// image from. Support for the specific BMC vendor is implemented in bmclib.
 	NetworkBootConfig *NetworkBootConfig `json:"networkBootConfig,omitempty"`
+
+	// AllowCustomSecureBootKeys represents enabling/disabling out-of-band acceptance of
+	// custom UEFI Secure Boot keys.
+	AllowCustomSecureBootKeys *AllowCustomSecureBootKeysAction `json:"allowCustomSecureBootKeys,omitempty"`
 }
 
 // TaskStatus defines the observed state of Task.

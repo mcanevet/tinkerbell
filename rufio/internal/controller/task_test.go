@@ -49,6 +49,8 @@ func getAction(s string) bmc.Action {
 		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootTLSMode: toPtr("None")}}
 	case "HTTPBootTLSModeAndURL":
 		return bmc.Action{NetworkBootConfig: &bmc.NetworkBootConfig{HTTPBootTLSMode: toPtr("None"), HTTPBootURL: toPtr("http://example.com/boot.efi")}}
+	case "AllowCustomSecureBootKeysEnable":
+		return bmc.Action{AllowCustomSecureBootKeys: &bmc.AllowCustomSecureBootKeysAction{Enable: true}}
 	default:
 		return bmc.Action{}
 	}
@@ -91,6 +93,11 @@ func TestTaskReconcile(t *testing.T) {
 			action:   getAction("VirtualMedia"),
 			provider: &testProvider{VirtualMediaOK: true},
 		},
+		"success secure boot key management": {
+			taskName: "AllowCustomSecureBootKeysEnable",
+			action:   getAction("AllowCustomSecureBootKeysEnable"),
+			provider: &testProvider{},
+		},
 		"success power on with rpc provider": {
 			taskName: "PowerOn",
 			action:   getAction("PowerOn"),
@@ -124,6 +131,12 @@ func TestTaskReconcile(t *testing.T) {
 			taskName:  "VirtualMedia",
 			action:    getAction("VirtualMedia"),
 			provider:  &testProvider{ErrVirtualMediaInsert: errors.New("failed to set virtual media")},
+			shouldErr: true,
+		},
+		"failure on secure boot key management": {
+			taskName:  "AllowCustomSecureBootKeysEnable",
+			action:    getAction("AllowCustomSecureBootKeysEnable"),
+			provider:  &testProvider{ErrAllowCustomSecureBootKeys: errors.New("failed to set secure boot key management")},
 			shouldErr: true,
 		},
 		"failure timeout": {
